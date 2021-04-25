@@ -5,8 +5,10 @@ use iced::{
 
 use std::fs::File;
 
+mod global_params;
 mod themes;
 mod widgets;
+use global_params::*;
 use themes::StyleTheme;
 use themes::Theme;
 use widgets::chat_list::ChatList;
@@ -86,7 +88,11 @@ impl Application for Silent {
         clipboard: &mut Clipboard,
     ) -> Command<Self::Message> {
         match message {
-            MainMessage::MessageInputChanged(text) => self.message_string = text,
+            MainMessage::MessageInputChanged(text) => {
+                if text.chars().count() <= MAX_MESSAGE_SIZE {
+                    self.message_string = text
+                }
+            }
         }
 
         Command::none()
