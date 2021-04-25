@@ -112,6 +112,9 @@ impl Application for Silent {
         self.chat_list
             .add_message(String::from("Addition string!"), String::from("Foo"));
 
+        self.users_list.add_user(String::from("Flone"));
+        self.users_list.add_user(String::from("Foo"));
+
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(10)
@@ -163,8 +166,8 @@ impl Application for Silent {
         Row::new()
             .padding(10)
             .align_items(Align::Center)
-            .push(left.width(Length::FillPortion(50)))
-            .push(right.width(Length::FillPortion(50)))
+            .push(left.width(Length::FillPortion(60)))
+            .push(right.width(Length::FillPortion(40)))
             .into()
     }
 }
