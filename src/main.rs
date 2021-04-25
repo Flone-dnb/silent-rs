@@ -109,6 +109,9 @@ impl Application for Silent {
             String::from("Foo"),
         );
 
+        self.chat_list
+            .add_message(String::from("Addition string!"), String::from("Foo"));
+
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(10)

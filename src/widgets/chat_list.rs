@@ -31,7 +31,20 @@ impl ChatList {
     }
 
     pub fn add_message(&mut self, message: String, author: String) {
-        self.messages.push_back(ChatMessage::new(message, author));
+        let mut same_author = false;
+
+        if let Some(last_message) = self.messages.back_mut() {
+            if last_message.author == author {
+                last_message.message.push_str("\n");
+                last_message.message.push_str(&message);
+
+                same_author = true;
+            }
+        }
+
+        if same_author == false {
+            self.messages.push_back(ChatMessage::new(message, author));
+        }
     }
 }
 
