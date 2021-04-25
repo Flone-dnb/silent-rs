@@ -6,10 +6,10 @@ use crate::MainMessage;
 
 #[derive(Debug)]
 pub struct ChatList {
-    pub messages: LinkedList<ChatMessage>, // use list instead of vec because we will pop front to maintain 'max_messages' size
-    pub max_messages: usize,
+    messages: LinkedList<ChatMessage>, // use list instead of vec because we will pop front to maintain 'max_messages' size
+    max_messages: usize,
 
-    pub scroll_state: scrollable::State,
+    scroll_state: scrollable::State,
 }
 
 impl ChatList {
@@ -50,9 +50,9 @@ impl ChatList {
 
 #[derive(Debug, Default)]
 pub struct ChatMessage {
-    pub message: String,
-    pub author: String,
-    pub time: String,
+    message: String,
+    author: String,
+    time: String,
 }
 
 impl ChatMessage {

@@ -4,7 +4,7 @@ use crate::MainMessage;
 
 #[derive(Debug, Default)]
 pub struct UsersList {
-    pub users: Vec<UsersItem>,
+    users: Vec<UsersItem>,
 
     scroll_state: scrollable::State,
 }
@@ -27,8 +27,8 @@ impl UsersList {
 
 #[derive(Debug, Default)]
 pub struct UsersItem {
-    pub username: String,
-    pub ping_in_ms: i32,
+    username: String,
+    ping_in_ms: i32,
 }
 
 impl UsersItem {
