@@ -26,12 +26,12 @@ impl ChatList {
     }
 
     pub fn get_ui(&mut self, current_style: &StyleTheme) -> Container<MainMessage> {
-        let mut scroll_area = Scrollable::new(&mut self.scroll_state)
-            .width(Length::Fill)
-            .style(current_style.theme);
-        for message in self.messages.iter() {
-            scroll_area = scroll_area.push(message.get_ui(current_style));
-        }
+        let scroll_area = self.messages.iter().fold(
+            Scrollable::new(&mut self.scroll_state)
+                .width(Length::Fill)
+                .style(current_style.theme),
+            |scroll_area, message| scroll_area.push(message.get_ui(&current_style)),
+        );
 
         Container::new(scroll_area)
             .width(Length::Fill)

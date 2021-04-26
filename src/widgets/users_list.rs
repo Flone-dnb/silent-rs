@@ -12,13 +12,12 @@ pub struct UsersList {
 
 impl UsersList {
     pub fn get_ui(&mut self, current_style: &StyleTheme) -> Container<MainMessage> {
-        let mut scroll_area = Scrollable::new(&mut self.scroll_state)
-            .width(Length::Fill)
-            .style(current_style.theme);
-
-        for entry in self.users.iter() {
-            scroll_area = scroll_area.push(entry.get_ui());
-        }
+        let scroll_area = self.users.iter().fold(
+            Scrollable::new(&mut self.scroll_state)
+                .width(Length::Fill)
+                .style(current_style.theme),
+            |scroll_area, user| scroll_area.push(user.get_ui()),
+        );
 
         Container::new(scroll_area)
             .width(Length::Fill)
