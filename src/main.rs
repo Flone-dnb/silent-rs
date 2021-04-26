@@ -1,6 +1,7 @@
 use iced::{
     executor, text_input, window::icon::Icon, Align, Application, Clipboard, Color, Column,
     Command, Element, HorizontalAlignment, Length, Row, Settings, Text, TextInput,
+    VerticalAlignment,
 };
 
 use std::fs::File;
@@ -101,7 +102,7 @@ impl Application for Silent {
     fn view(&mut self) -> Element<MainMessage> {
         self.chat_list.add_message(
             String::from("Привет мир! Hello World!"),
-            String::from("Flone"),
+            String::from("Bar"),
         );
 
         self.chat_list.add_message(
@@ -112,24 +113,24 @@ impl Application for Silent {
         self.chat_list
             .add_message(String::from("Addition string!"), String::from("Foo"));
 
-        self.users_list.add_user(String::from("Flone"));
+        self.users_list.add_user(String::from("Bar"));
         self.users_list.add_user(String::from("Foo"));
 
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
-            .padding(10)
+            .padding(5)
             .spacing(10)
             .push(
                 Text::new("Text Chat")
                     .horizontal_alignment(HorizontalAlignment::Center)
+                    .vertical_alignment(VerticalAlignment::Center)
                     .color(Color::WHITE)
-                    .height(Length::FillPortion(15)),
+                    .height(Length::FillPortion(8)),
             )
             .push(
                 self.chat_list
-                    .get_ui()
-                    .height(Length::FillPortion(83))
-                    .style(self.style.theme),
+                    .get_ui(&self.style)
+                    .height(Length::FillPortion(85)),
             )
             .push(
                 Row::new()
@@ -148,23 +149,25 @@ impl Application for Silent {
 
         let right: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
-            .padding(10)
+            .padding(5)
             .spacing(10)
             .push(
                 Text::new("Connected: 0")
                     .horizontal_alignment(HorizontalAlignment::Center)
+                    .vertical_alignment(VerticalAlignment::Center)
                     .color(Color::WHITE)
-                    .height(Length::FillPortion(15)),
+                    .height(Length::FillPortion(8)),
             )
             .push(
                 self.users_list
-                    .get_ui()
-                    .height(Length::FillPortion(85))
-                    .style(self.style.theme),
+                    .get_ui(&self.style)
+                    .width(Length::Fill)
+                    .height(Length::FillPortion(92)),
             );
 
         Row::new()
             .padding(10)
+            .spacing(0)
             .align_items(Align::Center)
             .push(left.width(Length::FillPortion(65)))
             .push(right.width(Length::FillPortion(35)))

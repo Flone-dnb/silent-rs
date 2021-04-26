@@ -24,6 +24,12 @@ impl StyleTheme {
             // other themes ...
         }
     }
+    pub fn get_message_author_color(&self) -> Color {
+        match self.theme {
+            Theme::Default => default_theme::MESSAGE_AUTHOR_COLOR,
+            // other themes ...
+        }
+    }
 }
 
 impl From<Theme> for Box<dyn container::StyleSheet> {

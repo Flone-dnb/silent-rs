@@ -1,7 +1,11 @@
 use chrono::prelude::*;
-use iced::{scrollable, Color, Column, HorizontalAlignment, Length, Row, Scrollable, Text};
+use iced::{
+    scrollable, Color, Column, Container, HorizontalAlignment, Length, Row, Scrollable, Text,
+    VerticalAlignment,
+};
 use std::collections::LinkedList;
 
+use crate::themes::*;
 use crate::MainMessage;
 
 #[derive(Debug)]
@@ -21,13 +25,19 @@ impl ChatList {
         }
     }
 
-    pub fn get_ui(&mut self) -> Scrollable<MainMessage> {
-        let mut scroll_area = Scrollable::new(&mut self.scroll_state);
+    pub fn get_ui(&mut self, current_style: &StyleTheme) -> Container<MainMessage> {
+        let mut scroll_area = Scrollable::new(&mut self.scroll_state)
+            .width(Length::Fill)
+            .style(current_style.theme);
         for message in self.messages.iter() {
-            scroll_area = scroll_area.push(message.get_ui());
+            scroll_area = scroll_area.push(message.get_ui(current_style));
         }
 
-        scroll_area
+        Container::new(scroll_area)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(10)
+            .style(current_style.theme)
     }
 
     pub fn add_message(&mut self, message: String, author: String) {
@@ -76,37 +86,29 @@ impl ChatMessage {
         }
     }
 
-    pub fn get_ui(&self) -> Column<MainMessage> {
+    pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
         Column::new()
             .padding(10)
             .push(
                 Row::new()
                     .push(
                         Text::new(&self.author)
-                            .color(Color::from_rgb(
-                                200 as f32 / 255.0,
-                                40 as f32 / 255.0,
-                                40 as f32 / 255.0,
-                            ))
+                            .color(current_style.get_message_author_color())
                             .size(23)
                             .horizontal_alignment(HorizontalAlignment::Left)
+                            .vertical_alignment(VerticalAlignment::Top)
                             .width(Length::Shrink),
                     )
                     .push(
-                        Text::new("  ")
-                            .size(23)
-                            .horizontal_alignment(HorizontalAlignment::Left)
-                            .width(Length::Shrink),
-                    )
-                    .push(
-                        Text::new(&self.time)
+                        Text::new(String::from("  ") + &self.time)
                             .color(Color::from_rgb(
                                 128 as f32 / 255.0,
                                 128 as f32 / 255.0,
                                 128 as f32 / 255.0,
                             ))
-                            .size(15)
+                            .size(17)
                             .horizontal_alignment(HorizontalAlignment::Left)
+                            .vertical_alignment(VerticalAlignment::Bottom)
                             .width(Length::Shrink),
                     ),
             )

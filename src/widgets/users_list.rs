@@ -1,5 +1,6 @@
-use iced::{scrollable, Color, HorizontalAlignment, Length, Row, Scrollable, Text};
+use iced::{scrollable, Color, Container, HorizontalAlignment, Length, Row, Scrollable, Text};
 
+use crate::themes::*;
 use crate::MainMessage;
 
 #[derive(Debug, Default)]
@@ -10,14 +11,20 @@ pub struct UsersList {
 }
 
 impl UsersList {
-    pub fn get_ui(&mut self) -> Scrollable<MainMessage> {
-        let mut scroll_area = Scrollable::new(&mut self.scroll_state);
+    pub fn get_ui(&mut self, current_style: &StyleTheme) -> Container<MainMessage> {
+        let mut scroll_area = Scrollable::new(&mut self.scroll_state)
+            .width(Length::Fill)
+            .style(current_style.theme);
 
         for entry in self.users.iter() {
             scroll_area = scroll_area.push(entry.get_ui());
         }
 
-        scroll_area
+        Container::new(scroll_area)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(10)
+            .style(current_style.theme)
     }
 
     pub fn add_user(&mut self, username: String) {
@@ -49,19 +56,13 @@ impl UsersItem {
                     .width(Length::Shrink),
             )
             .push(
-                Text::new("  ")
-                    .size(23)
-                    .horizontal_alignment(HorizontalAlignment::Left)
-                    .width(Length::Shrink),
-            )
-            .push(
-                Text::new(String::from("[") + &self.ping_in_ms.to_string()[..] + " ms]")
+                Text::new(String::from("  [") + &self.ping_in_ms.to_string()[..] + " ms]")
                     .color(Color::from_rgb(
                         128 as f32 / 255.0,
                         128 as f32 / 255.0,
                         128 as f32 / 255.0,
                     ))
-                    .size(15)
+                    .size(17)
                     .horizontal_alignment(HorizontalAlignment::Left)
                     .width(Length::Shrink),
             )

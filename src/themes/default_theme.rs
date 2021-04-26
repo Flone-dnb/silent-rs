@@ -2,16 +2,19 @@ use iced::{
     button, checkbox, container, progress_bar, radio, rule, scrollable, slider, text_input, Color,
 };
 
-const SURFACE: Color = Color::from_rgb(40 as f32 / 255.0, 40 as f32 / 255.0, 40 as f32 / 255.0);
+const SURFACE: Color = Color::from_rgb(30 as f32 / 255.0, 30 as f32 / 255.0, 30 as f32 / 255.0);
 
-const ACCENT: Color = Color::from_rgb(200 as f32 / 255.0, 40 as f32 / 255.0, 40 as f32 / 255.0);
+const ACTIVE: Color = Color::from_rgb(130 as f32 / 255.0, 10 as f32 / 255.0, 10 as f32 / 255.0);
 
-const ACTIVE: Color = Color::from_rgb(200 as f32 / 255.0, 40 as f32 / 255.0, 40 as f32 / 255.0);
+const HOVERED: Color = Color::from_rgb(130 as f32 / 255.0, 10 as f32 / 255.0, 10 as f32 / 255.0);
 
-const HOVERED: Color = Color::from_rgb(200 as f32 / 255.0, 40 as f32 / 255.0, 40 as f32 / 255.0);
+pub const MESSAGE_AUTHOR_COLOR: Color =
+    Color::from_rgb(200 as f32 / 255.0, 30 as f32 / 255.0, 30 as f32 / 255.0);
 
 pub const BACKGROUND_COLOR: Color =
     Color::from_rgb(25 as f32 / 255.0, 25 as f32 / 255.0, 25 as f32 / 255.0);
+
+const BORDER_RADIUS: f32 = 5.0;
 
 // ---------------------------------------------------------------
 
@@ -20,8 +23,11 @@ pub struct Container;
 impl container::StyleSheet for Container {
     fn style(&self) -> container::Style {
         container::Style {
-            background: Color::from_rgb8(0x36, 0x39, 0x3F).into(),
+            background: SURFACE.into(),
             text_color: Color::WHITE.into(),
+            border_width: 1.0,
+            border_color: iced::Color::TRANSPARENT,
+            border_radius: BORDER_RADIUS,
             ..container::Style::default()
         }
     }
@@ -57,7 +63,7 @@ impl text_input::StyleSheet for TextInput {
     fn active(&self) -> text_input::Style {
         text_input::Style {
             background: SURFACE.into(),
-            border_radius: 2.0,
+            border_radius: BORDER_RADIUS,
             border_width: 0.0,
             border_color: Color::TRANSPARENT,
         }
@@ -66,7 +72,7 @@ impl text_input::StyleSheet for TextInput {
     fn focused(&self) -> text_input::Style {
         text_input::Style {
             border_width: 1.0,
-            border_color: ACCENT,
+            border_color: ACTIVE,
             ..self.active()
         }
     }
@@ -74,7 +80,7 @@ impl text_input::StyleSheet for TextInput {
     fn hovered(&self) -> text_input::Style {
         text_input::Style {
             border_width: 1.0,
-            border_color: Color { a: 0.3, ..ACCENT },
+            border_color: Color { a: 0.3, ..HOVERED },
             ..self.focused()
         }
     }
@@ -100,7 +106,7 @@ impl button::StyleSheet for Button {
     fn active(&self) -> button::Style {
         button::Style {
             background: ACTIVE.into(),
-            border_radius: 3.0,
+            border_radius: BORDER_RADIUS,
             text_color: Color::WHITE,
             ..button::Style::default()
         }
@@ -131,12 +137,12 @@ impl scrollable::StyleSheet for Scrollable {
     fn active(&self) -> scrollable::Scrollbar {
         scrollable::Scrollbar {
             background: SURFACE.into(),
-            border_radius: 2.0,
+            border_radius: BORDER_RADIUS,
             border_width: 0.0,
             border_color: Color::TRANSPARENT,
             scroller: scrollable::Scroller {
                 color: ACTIVE,
-                border_radius: 2.0,
+                border_radius: BORDER_RADIUS,
                 border_width: 0.0,
                 border_color: Color::TRANSPARENT,
             },
@@ -220,7 +226,7 @@ impl progress_bar::StyleSheet for ProgressBar {
         progress_bar::Style {
             background: SURFACE.into(),
             bar: ACTIVE.into(),
-            border_radius: 10.0,
+            border_radius: BORDER_RADIUS,
         }
     }
 }
@@ -234,7 +240,7 @@ impl checkbox::StyleSheet for Checkbox {
         checkbox::Style {
             background: if is_checked { ACTIVE } else { SURFACE }.into(),
             checkmark_color: Color::WHITE,
-            border_radius: 2.0,
+            border_radius: BORDER_RADIUS,
             border_width: 1.0,
             border_color: ACTIVE,
         }
