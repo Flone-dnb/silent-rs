@@ -166,8 +166,8 @@ impl Application for Silent {
         Row::new()
             .padding(10)
             .align_items(Align::Center)
-            .push(left.width(Length::FillPortion(60)))
-            .push(right.width(Length::FillPortion(40)))
+            .push(left.width(Length::FillPortion(65)))
+            .push(right.width(Length::FillPortion(35)))
             .into()
     }
 }
