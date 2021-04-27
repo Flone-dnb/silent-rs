@@ -38,20 +38,35 @@ fn main() -> iced::Result {
     Silent::run(config)
 }
 
+#[derive(Debug, Clone)]
+enum WindowLayout {
+    ConnectWindow,
+    MainWindow,
+}
+
 #[derive(Debug)]
 struct Silent {
     chat_list: ChatList,
     users_list: UsersList,
+
     message_string: String,
+    username_string: String,
+    servername_string: String,
+
+    current_window_layout: WindowLayout,
 
     style: StyleTheme,
 
     message_input: text_input::State,
+    username_input: text_input::State,
+    servername_input: text_input::State,
 }
 
 #[derive(Debug, Clone)]
-pub enum MainMessage {
+enum MainMessage {
     MessageInputChanged(String),
+    UsernameInputChanged(String),
+    ServernameInputChanged(String),
 }
 
 impl Silent {
@@ -59,9 +74,14 @@ impl Silent {
         Silent {
             chat_list: ChatList::new(),
             users_list: UsersList::default(),
-            message_string: String::default(),
-            message_input: text_input::State::default(),
+            current_window_layout: WindowLayout::ConnectWindow,
             style: StyleTheme::new(Theme::Default),
+            message_string: String::default(),
+            username_string: String::default(),
+            servername_string: String::default(),
+            message_input: text_input::State::default(),
+            username_input: text_input::State::default(),
+            servername_input: text_input::State::default(),
         }
     }
 }
@@ -94,83 +114,126 @@ impl Application for Silent {
                     self.message_string = text
                 }
             }
+            MainMessage::UsernameInputChanged(text) => {
+                if text.chars().count() <= MAX_USERNAME_SIZE {
+                    self.username_string = text;
+                }
+            }
+            MainMessage::ServernameInputChanged(text) => {
+                self.servername_string = text;
+            }
         }
 
         Command::none()
     }
 
     fn view(&mut self) -> Element<MainMessage> {
-        self.chat_list.add_message(
-            String::from("Привет мир! Hello World!"),
-            String::from("Bar"),
-        );
-
-        self.chat_list.add_message(
-            String::from("Привет мир! Hello World!"),
-            String::from("Foo"),
-        );
-
-        self.chat_list
-            .add_message(String::from("Addition string!"), String::from("Foo"));
-
-        self.users_list.add_user(String::from("Bar"));
-        self.users_list.add_user(String::from("Foo"));
-
-        let left: Column<MainMessage> = Column::new()
-            .align_items(Align::Center)
-            .padding(5)
-            .spacing(10)
-            .push(
-                Text::new("Text Chat")
-                    .horizontal_alignment(HorizontalAlignment::Center)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .color(Color::WHITE)
-                    .height(Length::FillPortion(8)),
-            )
-            .push(
-                self.chat_list
-                    .get_ui(&self.style)
-                    .height(Length::FillPortion(85)),
-            )
-            .push(
-                Row::new()
-                    .push(
-                        TextInput::new(
-                            &mut self.message_input,
-                            "Type your message here...",
-                            &self.message_string,
-                            MainMessage::MessageInputChanged,
+        match self.current_window_layout {
+            WindowLayout::ConnectWindow => Row::new()
+                .push(
+                    Column::new()
+                        .push(Text::new("Username: ").color(Color::WHITE))
+                        .push(Text::new("Server: ").color(Color::WHITE))
+                        .width(Length::FillPortion(50)),
+                )
+                .push(
+                    Column::new()
+                        .push(
+                            TextInput::new(
+                                &mut self.username_input,
+                                "Type your username...",
+                                &self.username_string,
+                                MainMessage::UsernameInputChanged,
+                            )
+                            .style(self.style.theme),
                         )
-                        .size(22)
-                        .style(self.style.theme),
+                        .push(
+                            TextInput::new(
+                                &mut self.servername_input,
+                                "IP or domain name of the server...",
+                                &self.servername_string,
+                                MainMessage::ServernameInputChanged,
+                            )
+                            .style(self.style.theme),
+                        )
+                        .width(Length::FillPortion(50)),
+                )
+                .width(Length::FillPortion(50))
+                .into(),
+            WindowLayout::MainWindow => {
+                self.chat_list.add_message(
+                    String::from("Привет мир! Hello World!"),
+                    String::from("Bar"),
+                );
+
+                self.chat_list.add_message(
+                    String::from("Привет мир! Hello World!"),
+                    String::from("Foo"),
+                );
+
+                self.chat_list
+                    .add_message(String::from("Addition string!"), String::from("Foo"));
+
+                self.users_list.add_user(String::from("Bar"));
+                self.users_list.add_user(String::from("Foo"));
+
+                let left: Column<MainMessage> = Column::new()
+                    .align_items(Align::Center)
+                    .padding(5)
+                    .spacing(10)
+                    .push(
+                        Text::new("Text Chat")
+                            .horizontal_alignment(HorizontalAlignment::Center)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .color(Color::WHITE)
+                            .height(Length::FillPortion(8)),
                     )
-                    .height(Length::FillPortion(7)),
-            );
+                    .push(
+                        self.chat_list
+                            .get_ui(&self.style)
+                            .height(Length::FillPortion(85)),
+                    )
+                    .push(
+                        Row::new()
+                            .push(
+                                TextInput::new(
+                                    &mut self.message_input,
+                                    "Type your message here...",
+                                    &self.message_string,
+                                    MainMessage::MessageInputChanged,
+                                )
+                                .size(22)
+                                .style(self.style.theme),
+                            )
+                            .height(Length::FillPortion(7)),
+                    );
 
-        let right: Column<MainMessage> = Column::new()
-            .align_items(Align::Center)
-            .padding(5)
-            .spacing(10)
-            .push(
-                Text::new("Connected: 0")
-                    .horizontal_alignment(HorizontalAlignment::Center)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .color(Color::WHITE)
-                    .height(Length::FillPortion(8)),
-            )
-            .push(
-                self.users_list
-                    .get_ui(&self.style)
-                    .width(Length::Fill)
-                    .height(Length::FillPortion(92)),
-            );
+                let right: Column<MainMessage> = Column::new()
+                    .align_items(Align::Center)
+                    .padding(5)
+                    .spacing(10)
+                    .push(
+                        Text::new("Connected: 0")
+                            .horizontal_alignment(HorizontalAlignment::Center)
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .color(Color::WHITE)
+                            .height(Length::FillPortion(8)),
+                    )
+                    .push(
+                        self.users_list
+                            .get_ui(&self.style)
+                            .width(Length::Fill)
+                            .height(Length::FillPortion(92)),
+                    );
 
-        Row::new()
-            .padding(10)
-            .spacing(0)
-            .align_items(Align::Center)
-            .push(left.width(Length::FillPortion(65)))
-            .push(right.width(Length::FillPortion(35)))
-            .into()
+                Row::new()
+                    .padding(10)
+                    .spacing(0)
+                    .align_items(Align::Center)
+                    .push(left.width(Length::FillPortion(65)))
+                    .push(right.width(Length::FillPortion(35)))
+                    .into()
+            }
+        }
     }
 }
