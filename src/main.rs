@@ -15,6 +15,19 @@ use themes::Theme;
 use widgets::chat_list::ChatList;
 use widgets::users_list::UsersList;
 
+fn main() -> iced::Result {
+    let mut config = Settings::default();
+    config.antialiasing = false;
+    config.window.size = (900, 500);
+    config.window.min_size = Some((900, 500));
+    config.default_font = Some(include_bytes!("../res/mplus-2p-light.ttf"));
+
+    let icon = Icon::from_rgba(read_icon_png(String::from("res/app_icon.png")), 256, 256).unwrap();
+    config.window.icon = Some(icon);
+    config.default_text_size = 28;
+    Silent::run(config)
+}
+
 fn read_icon_png(path: String) -> Vec<u8> {
     let decoder = png::Decoder::new(File::open(path).unwrap());
     let (info, mut reader) = decoder.read_info().unwrap();
@@ -25,19 +38,6 @@ fn read_icon_png(path: String) -> Vec<u8> {
     buf
 }
 
-fn main() -> iced::Result {
-    let mut config = Settings::default();
-    config.antialiasing = false;
-    config.window.size = (900, 500);
-    config.window.min_size = Some((900, 500));
-    config.default_font = Some(include_bytes!("../res/mplus-2p-light.ttf"));
-
-    let icon = Icon::from_rgba(read_icon_png(String::from("res/app_icon.png")), 256, 256).unwrap();
-    config.window.icon = Some(icon);
-    config.default_text_size = 30;
-    Silent::run(config)
-}
-
 #[derive(Debug, Clone)]
 enum WindowLayout {
     ConnectWindow,
@@ -46,20 +46,27 @@ enum WindowLayout {
 
 #[derive(Debug)]
 struct Silent {
+    connect_window: ConnectWindow,
+
     chat_list: ChatList,
     users_list: UsersList,
 
     message_string: String,
-    username_string: String,
-    servername_string: String,
-    port_string: String,
-    password_string: String,
 
     current_window_layout: WindowLayout,
 
     style: StyleTheme,
 
     message_input: text_input::State,
+}
+
+#[derive(Debug, Default)]
+struct ConnectWindow {
+    username_string: String,
+    servername_string: String,
+    port_string: String,
+    password_string: String,
+
     username_input: text_input::State,
     servername_input: text_input::State,
     port_input: text_input::State,
@@ -87,17 +94,8 @@ impl Silent {
             current_window_layout: WindowLayout::ConnectWindow,
             style: StyleTheme::new(Theme::Default),
             message_string: String::default(),
-            username_string: String::default(),
-            servername_string: String::default(),
-            port_string: String::default(),
-            password_string: String::default(),
             message_input: text_input::State::default(),
-            username_input: text_input::State::default(),
-            servername_input: text_input::State::default(),
-            port_input: text_input::State::default(),
-            password_input: text_input::State::default(),
-            connect_button: button::State::default(),
-            settings_button: button::State::default(),
+            connect_window: ConnectWindow::default(),
         }
     }
 }
@@ -132,19 +130,19 @@ impl Application for Silent {
             }
             MainMessage::UsernameInputChanged(text) => {
                 if text.chars().count() <= MAX_USERNAME_SIZE {
-                    self.username_string = text;
+                    self.connect_window.username_string = text;
                 }
             }
             MainMessage::ServernameInputChanged(text) => {
-                self.servername_string = text;
+                self.connect_window.servername_string = text;
             }
             MainMessage::PortInputChanged(text) => {
                 if text.chars().count() <= 5 {
-                    self.port_string = text;
+                    self.connect_window.port_string = text;
                 }
             }
             MainMessage::PasswordInputChanged(text) => {
-                self.password_string = text;
+                self.connect_window.password_string = text;
             }
             MainMessage::ConnectButtonPressed => {}
             MainMessage::SettingsButtonPressed => {}
@@ -179,36 +177,36 @@ impl Application for Silent {
                                 .padding(5)
                                 .push(
                                     TextInput::new(
-                                        &mut self.username_input,
+                                        &mut self.connect_window.username_input,
                                         "Type your username...",
-                                        &self.username_string,
+                                        &self.connect_window.username_string,
                                         MainMessage::UsernameInputChanged,
                                     )
                                     .style(self.style.theme),
                                 )
                                 .push(
                                     TextInput::new(
-                                        &mut self.servername_input,
+                                        &mut self.connect_window.servername_input,
                                         "IP or domain name...",
-                                        &self.servername_string,
+                                        &self.connect_window.servername_string,
                                         MainMessage::ServernameInputChanged,
                                     )
                                     .style(self.style.theme),
                                 )
                                 .push(
                                     TextInput::new(
-                                        &mut self.port_input,
+                                        &mut self.connect_window.port_input,
                                         "",
-                                        &self.port_string,
+                                        &self.connect_window.port_string,
                                         MainMessage::PortInputChanged,
                                     )
                                     .style(self.style.theme),
                                 )
                                 .push(
                                     TextInput::new(
-                                        &mut self.password_input,
+                                        &mut self.connect_window.password_input,
                                         "(optional)",
-                                        &self.password_string,
+                                        &self.connect_window.password_string,
                                         MainMessage::PasswordInputChanged,
                                     )
                                     .style(self.style.theme),
@@ -219,7 +217,7 @@ impl Application for Silent {
                 .push(Column::new().height(Length::FillPortion(10)))
                 .push(
                     Button::new(
-                        &mut self.connect_button,
+                        &mut self.connect_window.connect_button,
                         Text::new("Connect").color(Color::WHITE),
                     )
                     .on_press(MainMessage::ConnectButtonPressed)
@@ -229,7 +227,7 @@ impl Application for Silent {
                 .push(Column::new().height(Length::FillPortion(20)))
                 .push(
                     Button::new(
-                        &mut self.settings_button,
+                        &mut self.connect_window.settings_button,
                         Text::new("Settings").color(Color::WHITE),
                     )
                     .on_press(MainMessage::SettingsButtonPressed)
