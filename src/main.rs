@@ -1,7 +1,7 @@
 use iced::{
     button, executor, text_input, window::icon::Icon, Align, Application, Button, Clipboard, Color,
-    Column, Command, Element, HorizontalAlignment, Length, Row, Settings, Text, TextInput,
-    VerticalAlignment,
+    Column, Command, Container, Element, HorizontalAlignment, Length, Row, Settings, Text,
+    TextInput, VerticalAlignment,
 };
 
 use std::fs::File;
@@ -18,8 +18,8 @@ use widgets::users_list::UsersList;
 fn main() -> iced::Result {
     let mut config = Settings::default();
     config.antialiasing = false;
-    config.window.size = (900, 500);
-    config.window.min_size = Some((900, 500));
+    config.window.size = (1100, 600);
+    config.window.min_size = Some((1100, 600));
     config.default_font = Some(include_bytes!("../res/mplus-2p-light.ttf"));
 
     let icon = Icon::from_rgba(read_icon_png(String::from("res/app_icon.png")), 256, 256).unwrap();
@@ -42,16 +42,19 @@ fn read_icon_png(path: String) -> Vec<u8> {
 enum WindowLayout {
     ConnectWindow,
     MainWindow,
+    SettingsWindow,
 }
 
 #[derive(Debug)]
 struct Silent {
     connect_window: ConnectWindow,
+    settings_window: SettingsWindow,
 
     chat_list: ChatList,
     users_list: UsersList,
 
     message_string: String,
+    is_connected: bool,
 
     current_window_layout: WindowLayout,
 
@@ -75,15 +78,21 @@ struct ConnectWindow {
     settings_button: button::State,
 }
 
+#[derive(Debug, Default)]
+struct SettingsWindow {
+    back_button: button::State,
+}
+
 #[derive(Debug, Clone)]
-enum MainMessage {
+pub enum MainMessage {
     MessageInputChanged(String),
     UsernameInputChanged(String),
     ServernameInputChanged(String),
     PortInputChanged(String),
     PasswordInputChanged(String),
     ConnectButtonPressed,
-    SettingsButtonPressed,
+    ToSettingsButtonPressed,
+    FromSettingsButtonPressed,
 }
 
 impl Silent {
@@ -96,6 +105,8 @@ impl Silent {
             message_string: String::default(),
             message_input: text_input::State::default(),
             connect_window: ConnectWindow::default(),
+            settings_window: SettingsWindow::default(),
+            is_connected: false,
         }
     }
 }
@@ -144,8 +155,19 @@ impl Application for Silent {
             MainMessage::PasswordInputChanged(text) => {
                 self.connect_window.password_string = text;
             }
-            MainMessage::ConnectButtonPressed => {}
-            MainMessage::SettingsButtonPressed => {}
+            MainMessage::ConnectButtonPressed => {
+                self.current_window_layout = WindowLayout::MainWindow
+            }
+            MainMessage::ToSettingsButtonPressed => {
+                self.current_window_layout = WindowLayout::SettingsWindow
+            }
+            MainMessage::FromSettingsButtonPressed => {
+                if self.is_connected {
+                    self.current_window_layout = WindowLayout::MainWindow
+                } else {
+                    self.current_window_layout = WindowLayout::ConnectWindow
+                }
+            }
         }
 
         Command::none()
@@ -242,7 +264,7 @@ impl Application for Silent {
                                 &mut self.connect_window.settings_button,
                                 Text::new("Settings").color(Color::WHITE),
                             )
-                            .on_press(MainMessage::SettingsButtonPressed)
+                            .on_press(MainMessage::ToSettingsButtonPressed)
                             .width(Length::FillPortion(20))
                             .height(Length::Shrink)
                             .style(self.style.theme),
@@ -251,6 +273,48 @@ impl Application for Silent {
                 )
                 .push(Column::new().height(Length::FillPortion(10)))
                 .into(),
+            WindowLayout::SettingsWindow => {
+                let content = Row::new()
+                    .padding(10)
+                    .spacing(20)
+                    .push(
+                        Container::new(
+                            Column::new()
+                                .padding(10)
+                                .push(Column::new().height(Length::FillPortion(10)))
+                                .push(Text::new("TODO").color(Color::WHITE))
+                                .push(Column::new().height(Length::FillPortion(60)))
+                                .push(
+                                    Button::new(
+                                        &mut self.settings_window.back_button,
+                                        Text::new("Return").color(Color::WHITE),
+                                    )
+                                    .on_press(MainMessage::FromSettingsButtonPressed)
+                                    .style(self.style.theme),
+                                )
+                                .push(Column::new().height(Length::FillPortion(10))),
+                        )
+                        .width(Length::FillPortion(30))
+                        .height(Length::Fill)
+                        .style(self.style.theme),
+                    )
+                    .push(
+                        Container::new(
+                            Column::new()
+                                .padding(10)
+                                .push(Column::new().height(Length::FillPortion(10)))
+                                .push(Text::new("TODO").color(Color::WHITE))
+                                .push(Column::new().height(Length::FillPortion(60)))
+                                .push(Text::new("TODO").color(Color::WHITE))
+                                .push(Column::new().height(Length::FillPortion(10))),
+                        )
+                        .width(Length::FillPortion(70))
+                        .height(Length::Fill)
+                        .style(self.style.theme),
+                    );
+
+                Column::new().padding(10).push(content).into()
+            }
             WindowLayout::MainWindow => {
                 self.chat_list.add_message(
                     String::from("Привет мир! Hello World!"),
