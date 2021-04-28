@@ -129,36 +129,43 @@ impl Application for Silent {
 
     fn view(&mut self) -> Element<MainMessage> {
         match self.current_window_layout {
-            WindowLayout::ConnectWindow => Row::new()
+            WindowLayout::ConnectWindow => Column::new()
+                .push(Column::new().height(Length::FillPortion(20)))
                 .push(
-                    Column::new()
-                        .push(Text::new("Username: ").color(Color::WHITE))
-                        .push(Text::new("Server: ").color(Color::WHITE))
-                        .width(Length::FillPortion(50)),
-                )
-                .push(
-                    Column::new()
+                    Row::new()
+                        .height(Length::FillPortion(60))
+                        .push(Column::new().width(Length::FillPortion(35)))
                         .push(
-                            TextInput::new(
-                                &mut self.username_input,
-                                "Type your username...",
-                                &self.username_string,
-                                MainMessage::UsernameInputChanged,
-                            )
-                            .style(self.style.theme),
+                            Column::new()
+                                .push(Text::new("Username: ").color(Color::WHITE))
+                                .push(Text::new("Server: ").color(Color::WHITE))
+                                .width(Length::FillPortion(10)),
                         )
                         .push(
-                            TextInput::new(
-                                &mut self.servername_input,
-                                "IP or domain name of the server...",
-                                &self.servername_string,
-                                MainMessage::ServernameInputChanged,
-                            )
-                            .style(self.style.theme),
+                            Column::new()
+                                .push(
+                                    TextInput::new(
+                                        &mut self.username_input,
+                                        "Type your username...",
+                                        &self.username_string,
+                                        MainMessage::UsernameInputChanged,
+                                    )
+                                    .style(self.style.theme),
+                                )
+                                .push(
+                                    TextInput::new(
+                                        &mut self.servername_input,
+                                        "IP or domain name...",
+                                        &self.servername_string,
+                                        MainMessage::ServernameInputChanged,
+                                    )
+                                    .style(self.style.theme),
+                                )
+                                .width(Length::FillPortion(20)),
                         )
-                        .width(Length::FillPortion(50)),
+                        .push(Column::new().width(Length::FillPortion(35))),
                 )
-                .width(Length::FillPortion(50))
+                .push(Column::new().height(Length::FillPortion(20)))
                 .into(),
             WindowLayout::MainWindow => {
                 self.chat_list.add_message(
