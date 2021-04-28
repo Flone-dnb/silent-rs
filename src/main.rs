@@ -28,8 +28,8 @@ fn read_icon_png(path: String) -> Vec<u8> {
 fn main() -> iced::Result {
     let mut config = Settings::default();
     config.antialiasing = false;
-    config.window.size = (1200, 600);
-    config.window.min_size = Some((800, 500));
+    config.window.size = (900, 500);
+    config.window.min_size = Some((900, 500));
     config.default_font = Some(include_bytes!("../res/mplus-2p-light.ttf"));
 
     let icon = Icon::from_rgba(read_icon_png(String::from("res/app_icon.png")), 256, 256).unwrap();
