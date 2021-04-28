@@ -158,11 +158,12 @@ impl Application for Silent {
                 .push(Column::new().height(Length::FillPortion(10)))
                 .push(
                     Row::new()
-                        .height(Length::FillPortion(40))
-                        .push(Column::new().width(Length::FillPortion(35)))
+                        .spacing(5)
+                        .height(Length::FillPortion(30))
+                        .push(Column::new().width(Length::FillPortion(30)))
                         .push(
                             Column::new()
-                                .width(Length::FillPortion(10))
+                                .width(Length::FillPortion(15))
                                 .spacing(10)
                                 .padding(5)
                                 .push(Text::new("Username: ").color(Color::WHITE))
@@ -172,7 +173,7 @@ impl Application for Silent {
                         )
                         .push(
                             Column::new()
-                                .width(Length::FillPortion(20))
+                                .width(Length::FillPortion(25))
                                 .spacing(10)
                                 .padding(5)
                                 .push(
@@ -212,28 +213,43 @@ impl Application for Silent {
                                     .style(self.style.theme),
                                 ),
                         )
-                        .push(Column::new().width(Length::FillPortion(35))),
+                        .push(Column::new().width(Length::FillPortion(30))),
+                )
+                .push(Column::new().height(Length::FillPortion(5)))
+                .push(
+                    Row::new()
+                        .height(Length::Shrink)
+                        .push(Column::new().width(Length::FillPortion(40)))
+                        .push(
+                            Button::new(
+                                &mut self.connect_window.connect_button,
+                                Text::new("Connect").color(Color::WHITE),
+                            )
+                            .on_press(MainMessage::ConnectButtonPressed)
+                            .width(Length::FillPortion(20))
+                            .height(Length::Shrink)
+                            .style(self.style.theme),
+                        )
+                        .push(Column::new().width(Length::FillPortion(40))),
+                )
+                .push(Column::new().height(Length::FillPortion(30)))
+                .push(
+                    Row::new()
+                        .height(Length::Shrink)
+                        .push(Column::new().width(Length::FillPortion(40)))
+                        .push(
+                            Button::new(
+                                &mut self.connect_window.settings_button,
+                                Text::new("Settings").color(Color::WHITE),
+                            )
+                            .on_press(MainMessage::SettingsButtonPressed)
+                            .width(Length::FillPortion(20))
+                            .height(Length::Shrink)
+                            .style(self.style.theme),
+                        )
+                        .push(Column::new().width(Length::FillPortion(40))),
                 )
                 .push(Column::new().height(Length::FillPortion(10)))
-                .push(
-                    Button::new(
-                        &mut self.connect_window.connect_button,
-                        Text::new("Connect").color(Color::WHITE),
-                    )
-                    .on_press(MainMessage::ConnectButtonPressed)
-                    .height(Length::FillPortion(10))
-                    .style(self.style.theme),
-                )
-                .push(Column::new().height(Length::FillPortion(20)))
-                .push(
-                    Button::new(
-                        &mut self.connect_window.settings_button,
-                        Text::new("Settings").color(Color::WHITE),
-                    )
-                    .on_press(MainMessage::SettingsButtonPressed)
-                    .height(Length::FillPortion(10))
-                    .style(self.style.theme),
-                )
                 .into(),
             WindowLayout::MainWindow => {
                 self.chat_list.add_message(
