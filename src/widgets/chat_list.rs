@@ -16,6 +16,12 @@ pub struct ChatList {
     scroll_state: scrollable::State,
 }
 
+impl Default for ChatList {
+    fn default() -> Self {
+        ChatList::new()
+    }
+}
+
 impl ChatList {
     pub fn new() -> Self {
         ChatList {

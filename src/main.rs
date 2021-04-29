@@ -7,13 +7,15 @@ use iced::{
 use std::fs::File;
 
 mod global_params;
+mod layouts;
 mod themes;
 mod widgets;
 use global_params::*;
+use layouts::connect_layout::*;
+use layouts::main_layout::*;
+use layouts::settings_layout::*;
 use themes::StyleTheme;
 use themes::Theme;
-use widgets::chat_list::ChatList;
-use widgets::users_list::UsersList;
 
 fn main() -> iced::Result {
     let mut config = Settings::default();
@@ -47,40 +49,15 @@ enum WindowLayout {
 
 #[derive(Debug)]
 struct Silent {
-    connect_window: ConnectWindow,
-    settings_window: SettingsWindow,
+    main_layout: MainLayout,
+    connect_layout: ConnectLayout,
+    settings_layout: SettingsLayout,
 
-    chat_list: ChatList,
-    users_list: UsersList,
-
-    message_string: String,
     is_connected: bool,
 
     current_window_layout: WindowLayout,
 
     style: StyleTheme,
-
-    message_input: text_input::State,
-}
-
-#[derive(Debug, Default)]
-struct ConnectWindow {
-    username_string: String,
-    servername_string: String,
-    port_string: String,
-    password_string: String,
-
-    username_input: text_input::State,
-    servername_input: text_input::State,
-    port_input: text_input::State,
-    password_input: text_input::State,
-    connect_button: button::State,
-    settings_button: button::State,
-}
-
-#[derive(Debug, Default)]
-struct SettingsWindow {
-    back_button: button::State,
 }
 
 #[derive(Debug, Clone)]
@@ -98,14 +75,11 @@ pub enum MainMessage {
 impl Silent {
     fn new() -> Self {
         Silent {
-            chat_list: ChatList::new(),
-            users_list: UsersList::default(),
             current_window_layout: WindowLayout::ConnectWindow,
             style: StyleTheme::new(Theme::Default),
-            message_string: String::default(),
-            message_input: text_input::State::default(),
-            connect_window: ConnectWindow::default(),
-            settings_window: SettingsWindow::default(),
+            connect_layout: ConnectLayout::default(),
+            settings_layout: SettingsLayout::default(),
+            main_layout: MainLayout::default(),
             is_connected: false,
         }
     }
@@ -136,24 +110,24 @@ impl Application for Silent {
         match message {
             MainMessage::MessageInputChanged(text) => {
                 if text.chars().count() <= MAX_MESSAGE_SIZE {
-                    self.message_string = text
+                    self.main_layout.message_string = text
                 }
             }
             MainMessage::UsernameInputChanged(text) => {
                 if text.chars().count() <= MAX_USERNAME_SIZE {
-                    self.connect_window.username_string = text;
+                    self.connect_layout.username_string = text;
                 }
             }
             MainMessage::ServernameInputChanged(text) => {
-                self.connect_window.servername_string = text;
+                self.connect_layout.servername_string = text;
             }
             MainMessage::PortInputChanged(text) => {
                 if text.chars().count() <= 5 {
-                    self.connect_window.port_string = text;
+                    self.connect_layout.port_string = text;
                 }
             }
             MainMessage::PasswordInputChanged(text) => {
-                self.connect_window.password_string = text;
+                self.connect_layout.password_string = text;
             }
             MainMessage::ConnectButtonPressed => {
                 self.current_window_layout = WindowLayout::MainWindow
@@ -175,220 +149,9 @@ impl Application for Silent {
 
     fn view(&mut self) -> Element<MainMessage> {
         match self.current_window_layout {
-            WindowLayout::ConnectWindow => Column::new()
-                .align_items(Align::Center)
-                .push(Column::new().height(Length::FillPortion(10)))
-                .push(
-                    Row::new()
-                        .spacing(5)
-                        .height(Length::FillPortion(30))
-                        .push(Column::new().width(Length::FillPortion(30)))
-                        .push(
-                            Column::new()
-                                .width(Length::FillPortion(15))
-                                .spacing(10)
-                                .padding(5)
-                                .push(Text::new("Username: ").color(Color::WHITE))
-                                .push(Text::new("Server: ").color(Color::WHITE))
-                                .push(Text::new("Port: ").color(Color::WHITE))
-                                .push(Text::new("Password: ").color(Color::WHITE)),
-                        )
-                        .push(
-                            Column::new()
-                                .width(Length::FillPortion(25))
-                                .spacing(10)
-                                .padding(5)
-                                .push(
-                                    TextInput::new(
-                                        &mut self.connect_window.username_input,
-                                        "Type your username...",
-                                        &self.connect_window.username_string,
-                                        MainMessage::UsernameInputChanged,
-                                    )
-                                    .style(self.style.theme),
-                                )
-                                .push(
-                                    TextInput::new(
-                                        &mut self.connect_window.servername_input,
-                                        "IP or domain name...",
-                                        &self.connect_window.servername_string,
-                                        MainMessage::ServernameInputChanged,
-                                    )
-                                    .style(self.style.theme),
-                                )
-                                .push(
-                                    TextInput::new(
-                                        &mut self.connect_window.port_input,
-                                        "",
-                                        &self.connect_window.port_string,
-                                        MainMessage::PortInputChanged,
-                                    )
-                                    .style(self.style.theme),
-                                )
-                                .push(
-                                    TextInput::new(
-                                        &mut self.connect_window.password_input,
-                                        "(optional)",
-                                        &self.connect_window.password_string,
-                                        MainMessage::PasswordInputChanged,
-                                    )
-                                    .style(self.style.theme),
-                                ),
-                        )
-                        .push(Column::new().width(Length::FillPortion(30))),
-                )
-                .push(Column::new().height(Length::FillPortion(5)))
-                .push(
-                    Row::new()
-                        .height(Length::Shrink)
-                        .push(Column::new().width(Length::FillPortion(40)))
-                        .push(
-                            Button::new(
-                                &mut self.connect_window.connect_button,
-                                Text::new("Connect").color(Color::WHITE),
-                            )
-                            .on_press(MainMessage::ConnectButtonPressed)
-                            .width(Length::FillPortion(20))
-                            .height(Length::Shrink)
-                            .style(self.style.theme),
-                        )
-                        .push(Column::new().width(Length::FillPortion(40))),
-                )
-                .push(Column::new().height(Length::FillPortion(30)))
-                .push(
-                    Row::new()
-                        .height(Length::Shrink)
-                        .push(Column::new().width(Length::FillPortion(40)))
-                        .push(
-                            Button::new(
-                                &mut self.connect_window.settings_button,
-                                Text::new("Settings").color(Color::WHITE),
-                            )
-                            .on_press(MainMessage::ToSettingsButtonPressed)
-                            .width(Length::FillPortion(20))
-                            .height(Length::Shrink)
-                            .style(self.style.theme),
-                        )
-                        .push(Column::new().width(Length::FillPortion(40))),
-                )
-                .push(Column::new().height(Length::FillPortion(10)))
-                .into(),
-            WindowLayout::SettingsWindow => {
-                let content = Row::new()
-                    .padding(10)
-                    .spacing(20)
-                    .push(
-                        Container::new(
-                            Column::new()
-                                .padding(10)
-                                .push(Column::new().height(Length::FillPortion(10)))
-                                .push(Text::new("TODO").color(Color::WHITE))
-                                .push(Column::new().height(Length::FillPortion(60)))
-                                .push(
-                                    Button::new(
-                                        &mut self.settings_window.back_button,
-                                        Text::new("Return").color(Color::WHITE),
-                                    )
-                                    .on_press(MainMessage::FromSettingsButtonPressed)
-                                    .style(self.style.theme),
-                                )
-                                .push(Column::new().height(Length::FillPortion(10))),
-                        )
-                        .width(Length::FillPortion(30))
-                        .height(Length::Fill)
-                        .style(self.style.theme),
-                    )
-                    .push(
-                        Container::new(
-                            Column::new()
-                                .padding(10)
-                                .push(Column::new().height(Length::FillPortion(10)))
-                                .push(Text::new("TODO").color(Color::WHITE))
-                                .push(Column::new().height(Length::FillPortion(60)))
-                                .push(Text::new("TODO").color(Color::WHITE))
-                                .push(Column::new().height(Length::FillPortion(10))),
-                        )
-                        .width(Length::FillPortion(70))
-                        .height(Length::Fill)
-                        .style(self.style.theme),
-                    );
-
-                Column::new().padding(10).push(content).into()
-            }
-            WindowLayout::MainWindow => {
-                self.chat_list.add_message(
-                    String::from("Привет мир! Hello World!"),
-                    String::from("Bar"),
-                );
-
-                self.chat_list.add_message(
-                    String::from("Привет мир! Hello World!"),
-                    String::from("Foo"),
-                );
-
-                self.chat_list
-                    .add_message(String::from("Addition string!"), String::from("Foo"));
-
-                self.users_list.add_user(String::from("Bar"));
-                self.users_list.add_user(String::from("Foo"));
-
-                let left: Column<MainMessage> = Column::new()
-                    .align_items(Align::Center)
-                    .padding(5)
-                    .spacing(10)
-                    .push(
-                        Text::new("Text Chat")
-                            .horizontal_alignment(HorizontalAlignment::Center)
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .color(Color::WHITE)
-                            .height(Length::FillPortion(8)),
-                    )
-                    .push(
-                        self.chat_list
-                            .get_ui(&self.style)
-                            .height(Length::FillPortion(85)),
-                    )
-                    .push(
-                        Row::new()
-                            .push(
-                                TextInput::new(
-                                    &mut self.message_input,
-                                    "Type your message here...",
-                                    &self.message_string,
-                                    MainMessage::MessageInputChanged,
-                                )
-                                .size(22)
-                                .style(self.style.theme),
-                            )
-                            .height(Length::FillPortion(7)),
-                    );
-
-                let right: Column<MainMessage> = Column::new()
-                    .align_items(Align::Center)
-                    .padding(5)
-                    .spacing(10)
-                    .push(
-                        Text::new("Connected: 0")
-                            .horizontal_alignment(HorizontalAlignment::Center)
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .color(Color::WHITE)
-                            .height(Length::FillPortion(8)),
-                    )
-                    .push(
-                        self.users_list
-                            .get_ui(&self.style)
-                            .width(Length::Fill)
-                            .height(Length::FillPortion(92)),
-                    );
-
-                Row::new()
-                    .padding(10)
-                    .spacing(0)
-                    .align_items(Align::Center)
-                    .push(left.width(Length::FillPortion(65)))
-                    .push(right.width(Length::FillPortion(35)))
-                    .into()
-            }
+            WindowLayout::ConnectWindow => self.connect_layout.view(&self.style),
+            WindowLayout::SettingsWindow => self.settings_layout.view(&self.style),
+            WindowLayout::MainWindow => self.main_layout.view(&self.style),
         }
     }
 }
