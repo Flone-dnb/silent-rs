@@ -131,6 +131,38 @@ impl button::StyleSheet for Button {
 
 // ---------------------------------------------------------------
 
+pub struct GrayButton;
+
+impl button::StyleSheet for GrayButton {
+    fn active(&self) -> button::Style {
+        button::Style {
+            background: Color::TRANSPARENT.into(),
+            border_radius: BORDER_RADIUS,
+            text_color: Color::WHITE,
+            ..button::Style::default()
+        }
+    }
+
+    fn hovered(&self) -> button::Style {
+        button::Style {
+            background: Color::TRANSPARENT.into(),
+            text_color: Color::WHITE,
+            border_width: 1.0,
+            border_color: Color::WHITE,
+            ..self.active()
+        }
+    }
+
+    fn pressed(&self) -> button::Style {
+        button::Style {
+            border_width: 0.0,
+            ..self.hovered()
+        }
+    }
+}
+
+// ---------------------------------------------------------------
+
 pub struct Scrollable;
 
 impl scrollable::StyleSheet for Scrollable {

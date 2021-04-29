@@ -9,3 +9,4 @@ license = "Zlib"
 iced = {git = "https://github.com/hecrj/iced.git", commit = "wgpu-0.2.3", features= ["glow"]}
 chrono = "0.4.19"
 png = "0.16.8"
+opener = "0.4.1"

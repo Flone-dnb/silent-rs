@@ -1,6 +1,6 @@
 use iced::{
-    text_input, Align, Color, Column, Element, HorizontalAlignment, Length, Row, Text, TextInput,
-    VerticalAlignment,
+    button, text_input, Align, Button, Color, Column, Element, HorizontalAlignment, Length, Row,
+    Text, TextInput, VerticalAlignment,
 };
 
 use crate::themes::*;
@@ -17,6 +17,7 @@ pub struct MainLayout {
     pub message_string: String,
 
     message_input: text_input::State,
+    settings_button: button::State,
 }
 
 impl MainLayout {
@@ -40,18 +41,31 @@ impl MainLayout {
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(5)
-            .spacing(10)
+            .spacing(5)
+            .push(
+                Row::new()
+                    .push(
+                        Button::new(
+                            &mut self.settings_button,
+                            Text::new("settings").color(Color::WHITE).size(20),
+                        )
+                        .on_press(MainMessage::ToSettingsButtonPressed)
+                        .style(current_style.theme)
+                        .width(Length::Shrink),
+                    )
+                    .height(Length::FillPortion(5)),
+            )
             .push(
                 Text::new("Text Chat")
                     .horizontal_alignment(HorizontalAlignment::Center)
                     .vertical_alignment(VerticalAlignment::Center)
                     .color(Color::WHITE)
-                    .height(Length::FillPortion(8)),
+                    .height(Length::FillPortion(5)),
             )
             .push(
                 self.chat_list
                     .get_ui(current_style)
-                    .height(Length::FillPortion(85)),
+                    .height(Length::FillPortion(83)),
             )
             .push(
                 Row::new()
@@ -71,19 +85,20 @@ impl MainLayout {
         let right: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(5)
-            .spacing(10)
+            .spacing(5)
+            .push(Row::new().height(Length::FillPortion(5)))
             .push(
                 Text::new("Connected: 0")
                     .horizontal_alignment(HorizontalAlignment::Center)
                     .vertical_alignment(VerticalAlignment::Center)
                     .color(Color::WHITE)
-                    .height(Length::FillPortion(8)),
+                    .height(Length::FillPortion(5)),
             )
             .push(
                 self.users_list
                     .get_ui(current_style)
                     .width(Length::Fill)
-                    .height(Length::FillPortion(92)),
+                    .height(Length::FillPortion(90)),
             );
 
         Row::new()

@@ -67,6 +67,9 @@ pub enum MainMessage {
     PasswordInputChanged(String),
     ConnectButtonPressed,
     ToSettingsButtonPressed,
+    GeneralSettingsButtonPressed,
+    AboutSettingsButtonPressed,
+    GithubButtonPressed,
     FromSettingsButtonPressed,
 }
 
@@ -133,12 +136,21 @@ impl Application for Silent {
             MainMessage::ToSettingsButtonPressed => {
                 self.current_window_layout = WindowLayout::SettingsWindow
             }
+            MainMessage::GeneralSettingsButtonPressed => self
+                .settings_layout
+                .set_active_option(CurrentActiveOption::General),
+            MainMessage::AboutSettingsButtonPressed => self
+                .settings_layout
+                .set_active_option(CurrentActiveOption::About),
             MainMessage::FromSettingsButtonPressed => {
                 if self.is_connected {
                     self.current_window_layout = WindowLayout::MainWindow
                 } else {
                     self.current_window_layout = WindowLayout::ConnectWindow
                 }
+            }
+            MainMessage::GithubButtonPressed => {
+                opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
             }
         }
 
