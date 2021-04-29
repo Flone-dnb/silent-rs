@@ -1,7 +1,5 @@
 use iced::{
-    button, executor, text_input, window::icon::Icon, Align, Application, Button, Clipboard, Color,
-    Column, Command, Container, Element, HorizontalAlignment, Length, Row, Settings, Text,
-    TextInput, VerticalAlignment,
+    executor, window::icon::Icon, Application, Clipboard, Color, Command, Element, Settings,
 };
 
 use std::fs::File;
