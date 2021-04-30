@@ -5,6 +5,7 @@ use iced::{
 };
 use std::collections::LinkedList;
 
+use crate::global_params::*;
 use crate::themes::*;
 use crate::MainMessage;
 
@@ -26,7 +27,7 @@ impl ChatList {
     pub fn new() -> Self {
         ChatList {
             messages: LinkedList::default(),
-            max_messages: 100,
+            max_messages: MAX_MESSAGES_ON_SCREEN,
             scroll_state: scrollable::State::default(),
         }
     }
@@ -60,6 +61,10 @@ impl ChatList {
 
         if same_author == false {
             self.messages.push_back(ChatMessage::new(message, author));
+
+            if self.messages.len() > self.max_messages {
+                self.messages.pop_front();
+            }
         }
     }
 }
