@@ -1,6 +1,6 @@
 # Silent
 Silent is a cross-platform, high-quality, low latency voice chat made for gaming.
-Must be used with the Silent Server application. 
+Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server-rs) application. 
 <br>
 This project is at an early stage of development. 
 # Build
