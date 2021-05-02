@@ -6,12 +6,14 @@ use std::fs::File;
 
 mod global_params;
 mod layouts;
+mod services;
 mod themes;
 mod widgets;
 use global_params::*;
 use layouts::connect_layout::*;
 use layouts::main_layout::*;
 use layouts::settings_layout::*;
+use services::net_service::*;
 use themes::StyleTheme;
 use themes::Theme;
 
@@ -51,6 +53,8 @@ struct Silent {
     connect_layout: ConnectLayout,
     settings_layout: SettingsLayout,
 
+    net_service: NetService,
+
     is_connected: bool,
 
     current_window_layout: WindowLayout,
@@ -82,6 +86,7 @@ impl Silent {
             settings_layout: SettingsLayout::default(),
             main_layout: MainLayout::default(),
             is_connected: false,
+            net_service: NetService::new(),
         }
     }
 }
@@ -131,7 +136,10 @@ impl Application for Silent {
                 self.connect_layout.password_string = text;
             }
             MainMessage::ConnectButtonPressed => {
-                self.current_window_layout = WindowLayout::MainWindow
+                if let Ok(config) = self.connect_layout.is_data_filled() {
+                    self.net_service.start(config);
+                    self.current_window_layout = WindowLayout::MainWindow
+                }
             }
             MainMessage::ToSettingsButtonPressed => {
                 self.current_window_layout = WindowLayout::SettingsWindow

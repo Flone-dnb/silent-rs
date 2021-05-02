@@ -2,15 +2,19 @@ use iced::{
     button, text_input, Align, Button, Color, Column, Element, Length, Row, Text, TextInput,
 };
 
+use crate::global_params::*;
+use crate::services::net_service::ClientConfig;
 use crate::themes::*;
 use crate::MainMessage;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ConnectLayout {
     pub username_string: String,
     pub servername_string: String,
     pub port_string: String,
     pub password_string: String,
+
+    show_input_notice: bool,
 
     username_input: text_input::State,
     servername_input: text_input::State,
@@ -20,9 +24,45 @@ pub struct ConnectLayout {
     settings_button: button::State,
 }
 
+impl Default for ConnectLayout {
+    fn default() -> Self {
+        Self {
+            port_string: DEFAULT_SERVER_PORT.to_string(),
+            username_string: String::default(),
+            servername_string: String::default(),
+            password_string: String::default(),
+
+            show_input_notice: false,
+
+            username_input: text_input::State::default(),
+            servername_input: text_input::State::default(),
+            port_input: text_input::State::default(),
+            password_input: text_input::State::default(),
+            connect_button: button::State::default(),
+            settings_button: button::State::default(),
+        }
+    }
+}
+
 impl ConnectLayout {
+    pub fn is_data_filled(&mut self) -> Result<ClientConfig, ()> {
+        if self.servername_string.chars().count() > 1
+            && self.username_string.chars().count() > 1
+            && self.port_string.chars().count() > 1
+        {
+            Ok(ClientConfig {
+                username: self.username_string.clone(),
+                server_name: self.servername_string.clone(),
+                server_port: self.port_string.clone(),
+                server_password: self.password_string.clone(),
+            })
+        } else {
+            self.show_input_notice = true;
+            Err(())
+        }
+    }
     pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
-        Column::new()
+        let mut content = Column::new()
             .align_items(Align::Center)
             .push(Column::new().height(Length::FillPortion(10)))
             .push(
@@ -100,8 +140,19 @@ impl ConnectLayout {
                         .style(current_style.theme),
                     )
                     .push(Column::new().width(Length::FillPortion(40))),
+            );
+
+        if self.show_input_notice {
+            content = content.push(
+                Text::new("Please fill all non-optional fields.")
+                    .color(Color::WHITE)
+                    .height(Length::FillPortion(30)),
             )
-            .push(Column::new().height(Length::FillPortion(30)))
+        } else {
+            content = content.push(Column::new().height(Length::FillPortion(30)));
+        }
+
+        content = content
             .push(
                 Row::new()
                     .height(Length::Shrink)
@@ -118,7 +169,10 @@ impl ConnectLayout {
                     )
                     .push(Column::new().width(Length::FillPortion(40))),
             )
-            .push(Column::new().height(Length::FillPortion(10)))
-            .into()
+            .push(Column::new().height(Length::FillPortion(10)));
+
+        self.show_input_notice = false;
+
+        content.into()
     }
 }
