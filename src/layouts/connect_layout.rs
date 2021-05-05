@@ -4,6 +4,7 @@ use iced::{
 
 use crate::global_params::*;
 use crate::services::net_service::ClientConfig;
+use crate::services::user_net_service::{ConnectResult, IoResult};
 use crate::themes::*;
 use crate::MainMessage;
 
@@ -14,6 +15,7 @@ pub struct ConnectLayout {
     pub port_string: String,
     pub password_string: String,
 
+    connect_result: ConnectResult,
     show_input_notice: bool,
 
     username_input: text_input::State,
@@ -32,6 +34,7 @@ impl Default for ConnectLayout {
             servername_string: String::default(),
             password_string: String::default(),
 
+            connect_result: ConnectResult::Ok,
             show_input_notice: false,
 
             username_input: text_input::State::default(),
@@ -60,6 +63,9 @@ impl ConnectLayout {
             self.show_input_notice = true;
             Err(())
         }
+    }
+    pub fn set_connect_result(&mut self, connect_result: ConnectResult) {
+        self.connect_result = connect_result;
     }
     pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
         let mut content = Column::new()
@@ -146,11 +152,27 @@ impl ConnectLayout {
             content = content.push(
                 Text::new("Please fill all non-optional fields.")
                     .color(Color::WHITE)
-                    .height(Length::FillPortion(30)),
+                    .height(Length::FillPortion(10)),
             )
         } else {
-            content = content.push(Column::new().height(Length::FillPortion(30)));
+            content = content.push(Column::new().height(Length::FillPortion(10)));
         }
+
+        let connect_text: String = match &self.connect_result {
+            ConnectResult::Err(io_err) => match io_err {
+                IoResult::FIN => {
+                    String::from("An IO error occurred, the server closed connection.")
+                }
+                IoResult::Err(e) => format!("An IO error occurred, error: {}", e),
+                _ => String::from("An IO error occurred."),
+            },
+            ConnectResult::OtherErr(msg) => format!("There was an error: {}", msg),
+            ConnectResult::Ok => String::from(""),
+        };
+
+        content = content.push(Text::new(connect_text).color(Color::WHITE).size(25));
+
+        content = content.push(Column::new().height(Length::FillPortion(10)));
 
         content = content
             .push(

@@ -1,7 +1,8 @@
 use std::io;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+use crate::services::user_net_service::*;
 
 pub struct ClientConfig {
     pub username: String,
@@ -27,21 +28,48 @@ impl NetService {
         }
     }
 
-    pub fn start(&self, config: ClientConfig) {
-        self.tokio_runtime.spawn(NetService::service(config));
+    pub fn start(
+        &self,
+        config: ClientConfig,
+        username: String,
+        connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
+    ) {
+        self.tokio_runtime
+            .spawn(NetService::service(config, username, connect_layout_sender));
     }
 
     pub fn stop(self) {
         self.tokio_runtime.shutdown_timeout(Duration::from_secs(5));
     }
 
-    async fn service(config: ClientConfig) {
-        let mut stream =
-            TcpStream::connect(format!("{}:{}", config.server_name, config.server_port))
-                .await
-                .unwrap();
+    async fn service(
+        config: ClientConfig,
+        username: String,
+        connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
+    ) {
+        let stream =
+            TcpStream::connect(format!("{}:{}", config.server_name, config.server_port)).await;
 
-        stream.write_all(b"Hello world!").await.unwrap();
+        if stream.is_err() {
+            connect_layout_sender.send(ConnectResult::OtherErr(
+                String::from("Can't connect to the server. Make sure the specified server and port are correct, otherwise the server might be offline.")
+            )).unwrap();
+            return;
+        }
+
+        let mut stream = stream.unwrap();
+
+        let mut user_net_service = UserNetService::new();
+        match user_net_service.connect_user(&mut stream, username).await {
+            ConnectResult::Ok => {
+                connect_layout_sender.send(ConnectResult::Ok).unwrap();
+            }
+            res => {
+                connect_layout_sender.send(res).unwrap();
+                return;
+            }
+        }
+
         loop {
             // Wait for the socket to be readable
             stream.readable().await.unwrap();
@@ -66,5 +94,7 @@ impl NetService {
                 }
             }
         }
+
+        println!("disconnected");
     }
 }

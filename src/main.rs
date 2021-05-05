@@ -3,6 +3,7 @@ use iced::{
 };
 
 use std::fs::File;
+use std::sync::mpsc;
 
 mod global_params;
 mod layouts;
@@ -14,6 +15,7 @@ use layouts::connect_layout::*;
 use layouts::main_layout::*;
 use layouts::settings_layout::*;
 use services::net_service::*;
+use services::user_net_service::ConnectResult;
 use themes::StyleTheme;
 use themes::Theme;
 
@@ -137,8 +139,19 @@ impl Application for Silent {
             }
             MainMessage::ConnectButtonPressed => {
                 if let Ok(config) = self.connect_layout.is_data_filled() {
-                    self.net_service.start(config);
-                    self.current_window_layout = WindowLayout::MainWindow
+                    let (tx, rx) = mpsc::channel();
+
+                    self.net_service
+                        .start(config, self.connect_layout.username_string.clone(), tx);
+
+                    let received = rx.recv().unwrap();
+
+                    if received == ConnectResult::Ok {
+                        self.connect_layout.set_connect_result(ConnectResult::Ok);
+                        self.current_window_layout = WindowLayout::MainWindow;
+                    } else {
+                        self.connect_layout.set_connect_result(received);
+                    }
                 }
             }
             MainMessage::ToSettingsButtonPressed => {

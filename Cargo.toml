@@ -14,3 +14,5 @@ platform-dirs = "0.3.0"
 bytevec = "0.2.0"
 tokio = { version = "1.5.0", features = ["full"] }
 futures = "0.3.14"
+num-traits = "0.2"
+num-derive = "0.3"
