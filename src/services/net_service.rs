@@ -1,5 +1,7 @@
 use std::io;
+use std::sync::mpsc;
 use std::time::Duration;
+
 use tokio::net::TcpStream;
 
 use crate::services::user_net_service::*;
@@ -60,8 +62,26 @@ impl NetService {
         let mut stream = stream.unwrap();
 
         let mut user_net_service = UserNetService::new();
-        match user_net_service.connect_user(&mut stream, username).await {
+
+        let (sender, receiver) = mpsc::channel();
+
+        match user_net_service
+            .connect_user(&mut stream, username, sender)
+            .await
+        {
             ConnectResult::Ok => {
+                // Get info about all other users.
+                loop {
+                    let received = receiver.recv().unwrap();
+                    if received.is_none() {
+                        // End.
+                        break;
+                    } else {
+                        connect_layout_sender
+                            .send(ConnectResult::InfoAboutOtherUser(received.unwrap()))
+                            .unwrap();
+                    }
+                }
                 connect_layout_sender.send(ConnectResult::Ok).unwrap();
             }
             res => {

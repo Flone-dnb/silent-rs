@@ -167,7 +167,7 @@ impl ConnectLayout {
                 _ => String::from("An IO error occurred."),
             },
             ConnectResult::OtherErr(msg) => format!("There was an error: {}", msg),
-            ConnectResult::Ok => String::from(""),
+            _ => String::from(""),
         };
 
         content = content.push(Text::new(connect_text).color(Color::WHITE).size(25));

@@ -144,13 +144,23 @@ impl Application for Silent {
                     self.net_service
                         .start(config, self.connect_layout.username_string.clone(), tx);
 
-                    let received = rx.recv().unwrap();
+                    loop {
+                        let received = rx.recv().unwrap();
 
-                    if received == ConnectResult::Ok {
-                        self.connect_layout.set_connect_result(ConnectResult::Ok);
-                        self.current_window_layout = WindowLayout::MainWindow;
-                    } else {
-                        self.connect_layout.set_connect_result(received);
+                        match received {
+                            ConnectResult::Ok => {
+                                self.connect_layout.set_connect_result(ConnectResult::Ok);
+                                self.current_window_layout = WindowLayout::MainWindow;
+                                break;
+                            }
+                            ConnectResult::InfoAboutOtherUser(user_info) => {
+                                self.main_layout.add_user(user_info.username);
+                            }
+                            _ => {
+                                self.connect_layout.set_connect_result(received);
+                                break;
+                            }
+                        }
                     }
                 }
             }

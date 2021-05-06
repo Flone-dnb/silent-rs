@@ -18,10 +18,22 @@ enum ConnectServerAnswer {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct UserInfo {
+    pub username: String,
+}
+
+impl UserInfo {
+    pub fn new(username: String) -> Self {
+        UserInfo { username }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ConnectResult {
     Ok,
     Err(IoResult),
     OtherErr(String),
+    InfoAboutOtherUser(UserInfo),
 }
 
 #[derive(Debug, PartialEq)]
@@ -108,6 +120,7 @@ impl UserNetService {
         &mut self,
         socket: &mut TcpStream,
         username: String,
+        info_sender: std::sync::mpsc::Sender<Option<UserInfo>>,
     ) -> ConnectResult {
         // Prepare initial send buffer:
         // (u16): size of the version string,
@@ -192,6 +205,67 @@ impl UserNetService {
                 return ConnectResult::OtherErr(String::from("FromPrimitive::from_i32 failed()"))
             }
         }
+
+        // Ok.
+        // Read info about other users.
+        // Read user count.
+        let mut users_count_buf = vec![0u8; std::mem::size_of::<u64>()];
+        loop {
+            match self.read_from_socket(socket, &mut users_count_buf).await {
+                IoResult::WouldBlock => continue, // try again
+                IoResult::Ok(_) => break,
+                res => return ConnectResult::Err(res),
+            }
+        }
+
+        let user_count = u64::decode::<u64>(&users_count_buf);
+        if user_count.is_err() {
+            return ConnectResult::OtherErr(String::from(
+                "decode::<u64> failed on users_count_buf",
+            ));
+        }
+        let user_count = user_count.unwrap();
+
+        for _ in 0..user_count {
+            // Read username len.
+            let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
+            loop {
+                match self.read_from_socket(socket, &mut username_len_buf).await {
+                    IoResult::WouldBlock => continue, // try again
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::Err(res),
+                }
+            }
+            let username_len = u16::decode::<u16>(&username_len_buf);
+            if username_len.is_err() {
+                return ConnectResult::OtherErr(String::from(
+                    "decode::<u16> failed on username_len_buf",
+                ));
+            }
+            let username_len = username_len.unwrap();
+
+            // Read username.
+            let mut username_buf = vec![0u8; username_len as usize];
+            loop {
+                match self.read_from_socket(socket, &mut username_buf).await {
+                    IoResult::WouldBlock => continue, // try again
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::Err(res),
+                }
+            }
+            let username = std::str::from_utf8(&username_buf);
+            if username.is_err() {
+                return ConnectResult::OtherErr(String::from("from_utf8() failed on username_buf"));
+            }
+
+            info_sender
+                .send(Some(UserInfo::new(String::from(username.unwrap()))))
+                .unwrap();
+        }
+
+        info_sender.send(None).unwrap(); // End.
+
+        self.user_state = UserState::Connected;
 
         return ConnectResult::Ok;
     }

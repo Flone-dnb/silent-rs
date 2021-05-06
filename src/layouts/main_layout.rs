@@ -21,23 +21,13 @@ pub struct MainLayout {
 }
 
 impl MainLayout {
+    pub fn add_user(&mut self, username: String) {
+        self.users_list.add_user(username);
+    }
+    pub fn add_message(&mut self, message: String, author: String) {
+        self.chat_list.add_message(message, author);
+    }
     pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
-        self.chat_list.add_message(
-            String::from("Привет мир! Hello World!"),
-            String::from("Bar"),
-        );
-
-        self.chat_list.add_message(
-            String::from("Привет мир! Hello World!"),
-            String::from("Foo"),
-        );
-
-        self.chat_list
-            .add_message(String::from("Addition string!"), String::from("Foo"));
-
-        self.users_list.add_user(String::from("Bar"));
-        self.users_list.add_user(String::from("Foo"));
-
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(5)
