@@ -1,7 +1,6 @@
 use std::net::*;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::global_params::*;
@@ -17,13 +16,15 @@ pub struct ClientConfig {
 
 #[derive(Debug)]
 pub struct NetService {
-    running_tcp_thread: Option<JoinHandle<()>>,
+    stop_pending: Arc<Mutex<bool>>,
+    stop_receiver: Option<std::sync::mpsc::Receiver<()>>,
 }
 
 impl NetService {
     pub fn new() -> Self {
         Self {
-            running_tcp_thread: None,
+            stop_pending: Arc::new(Mutex::new(false)),
+            stop_receiver: None,
         }
     }
 
@@ -34,14 +35,29 @@ impl NetService {
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
-        self.running_tcp_thread = Some(thread::spawn(move || {
-            NetService::service(config, username, connect_layout_sender, internal_messages)
-        }));
+        let (sender, receiver) = mpsc::channel();
+
+        let stop_pending_copy = Arc::clone(&self.stop_pending);
+        thread::spawn(move || {
+            NetService::service(
+                config,
+                username,
+                connect_layout_sender,
+                internal_messages,
+                stop_pending_copy,
+                sender,
+            )
+        });
+        self.stop_receiver = Some(receiver);
     }
 
-    pub fn stop(self) {
-        if self.running_tcp_thread.is_some() {
-            self.running_tcp_thread.unwrap().join().unwrap();
+    pub fn stop(&mut self) {
+        match &self.stop_receiver {
+            Some(r) => {
+                *self.stop_pending.lock().unwrap() = true;
+                r.recv().unwrap();
+            }
+            None => {}
         }
     }
 
@@ -50,6 +66,8 @@ impl NetService {
         username: String,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        stop_pending: Arc<Mutex<bool>>,
+        stop_sender: std::sync::mpsc::Sender<()>,
     ) {
         let stream = TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
 
@@ -119,6 +137,13 @@ impl NetService {
             loop {
                 match user_net_service.read_from_socket(&mut stream, &mut in_buf) {
                     IoResult::WouldBlock => {
+                        {
+                            let guard = stop_pending.lock().unwrap();
+                            if *guard == true {
+                                stop_sender.send(()).unwrap();
+                                return;
+                            }
+                        }
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                         continue;
                     }

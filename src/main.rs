@@ -105,6 +105,12 @@ impl Silent {
     }
 }
 
+impl Drop for Silent {
+    fn drop(&mut self) {
+        self.net_service.stop();
+    }
+}
+
 impl Application for Silent {
     type Executor = executor::Default;
     type Message = MainMessage;
