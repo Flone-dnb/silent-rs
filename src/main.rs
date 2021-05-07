@@ -1,9 +1,10 @@
 use iced::{
-    executor, window::icon::Icon, Application, Clipboard, Color, Command, Element, Settings,
+    executor, time, window::icon::Icon, Application, Clipboard, Color, Command, Element, Settings,
+    Subscription,
 };
 
 use std::fs::File;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 
 mod global_params;
 mod layouts;
@@ -55,6 +56,8 @@ struct Silent {
     connect_layout: ConnectLayout,
     settings_layout: SettingsLayout,
 
+    internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+
     net_service: NetService,
 
     is_connected: bool,
@@ -62,6 +65,12 @@ struct Silent {
     current_window_layout: WindowLayout,
 
     style: StyleTheme,
+}
+
+#[derive(Debug, Clone)]
+pub enum InternalMessage {
+    SystemIOError(String),
+    UserMessage(String, String),
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +86,7 @@ pub enum MainMessage {
     AboutSettingsButtonPressed,
     GithubButtonPressed,
     FromSettingsButtonPressed,
+    Tick(()),
 }
 
 impl Silent {
@@ -89,6 +99,7 @@ impl Silent {
             main_layout: MainLayout::default(),
             is_connected: false,
             net_service: NetService::new(),
+            internal_messages: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -110,12 +121,31 @@ impl Application for Silent {
         String::from("Silent")
     }
 
+    fn subscription(&self) -> Subscription<Self::Message> {
+        // look for new internal messages one time per second
+        time::every(std::time::Duration::from_millis(1000)).map(|_| MainMessage::Tick(()))
+    }
+
     fn update(
         &mut self,
         message: Self::Message,
         clipboard: &mut Clipboard,
     ) -> Command<Self::Message> {
         match message {
+            MainMessage::Tick(_) => {
+                let mut guard = self.internal_messages.lock().unwrap();
+                for message in guard.iter() {
+                    match message {
+                        InternalMessage::SystemIOError(msg) => {
+                            self.main_layout.add_system_message(msg.clone());
+                        }
+                        InternalMessage::UserMessage(msg, author) => {
+                            self.main_layout.add_message(msg.clone(), author.clone());
+                        }
+                    }
+                }
+                guard.clear();
+            }
             MainMessage::MessageInputChanged(text) => {
                 if text.chars().count() <= MAX_MESSAGE_SIZE {
                     self.main_layout.message_string = text
@@ -141,8 +171,12 @@ impl Application for Silent {
                 if let Ok(config) = self.connect_layout.is_data_filled() {
                     let (tx, rx) = mpsc::channel();
 
-                    self.net_service
-                        .start(config, self.connect_layout.username_string.clone(), tx);
+                    self.net_service.start(
+                        config,
+                        self.connect_layout.username_string.clone(),
+                        tx,
+                        Arc::clone(&self.internal_messages),
+                    );
 
                     loop {
                         let received = rx.recv().unwrap();

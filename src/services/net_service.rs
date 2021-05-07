@@ -1,10 +1,12 @@
-use std::io;
-use std::sync::mpsc;
+use std::net::*;
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
-use tokio::net::TcpStream;
-
+use crate::global_params::*;
 use crate::services::user_net_service::*;
+use crate::InternalMessage;
 
 pub struct ClientConfig {
     pub username: String,
@@ -15,42 +17,41 @@ pub struct ClientConfig {
 
 #[derive(Debug)]
 pub struct NetService {
-    tokio_runtime: tokio::runtime::Runtime,
+    running_tcp_thread: Option<JoinHandle<()>>,
 }
 
 impl NetService {
     pub fn new() -> Self {
-        let rt = tokio::runtime::Runtime::new();
-        if rt.is_err() {
-            panic!("can't start Tokio runtime");
-        }
-
         Self {
-            tokio_runtime: rt.unwrap(),
+            running_tcp_thread: None,
         }
     }
 
     pub fn start(
-        &self,
+        &mut self,
         config: ClientConfig,
         username: String,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
+        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
-        self.tokio_runtime
-            .spawn(NetService::service(config, username, connect_layout_sender));
+        self.running_tcp_thread = Some(thread::spawn(move || {
+            NetService::service(config, username, connect_layout_sender, internal_messages)
+        }));
     }
 
     pub fn stop(self) {
-        self.tokio_runtime.shutdown_timeout(Duration::from_secs(5));
+        if self.running_tcp_thread.is_some() {
+            self.running_tcp_thread.unwrap().join().unwrap();
+        }
     }
 
-    async fn service(
+    fn service(
         config: ClientConfig,
         username: String,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
+        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
-        let stream =
-            TcpStream::connect(format!("{}:{}", config.server_name, config.server_port)).await;
+        let stream = TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
 
         if stream.is_err() {
             connect_layout_sender.send(ConnectResult::OtherErr(
@@ -60,15 +61,28 @@ impl NetService {
         }
 
         let mut stream = stream.unwrap();
+        if stream.set_nodelay(true).is_err() {
+            connect_layout_sender
+                .send(ConnectResult::OtherErr(String::from(
+                    "stream.set_nodelay() failed.",
+                )))
+                .unwrap();
+            return;
+        }
+        if stream.set_nonblocking(true).is_err() {
+            connect_layout_sender
+                .send(ConnectResult::OtherErr(String::from(
+                    "stream.set_nonblocking() failed.",
+                )))
+                .unwrap();
+            return;
+        }
 
         let mut user_net_service = UserNetService::new();
 
         let (sender, receiver) = mpsc::channel();
 
-        match user_net_service
-            .connect_user(&mut stream, username, sender)
-            .await
-        {
+        match user_net_service.connect_user(&mut stream, username, sender) {
             ConnectResult::Ok => {
                 // Get info about all other users.
                 loop {
@@ -91,30 +105,31 @@ impl NetService {
         }
 
         loop {
-            // Wait for the socket to be readable
-            stream.readable().await.unwrap();
-
-            // Creating the buffer **after** the `await` prevents it from
-            // being stored in the async task.
-            let mut buf = [0; 4096];
-
-            // Try to read data, this may still fail with `WouldBlock`
-            // if the readiness event is a false positive.
-            // (non-blocking)
-            match stream.try_read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    println!("read {} bytes", n);
-                }
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
-                }
-                Err(_) => {
-                    return println!("try_read() error");
+            let mut fin = false;
+            let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
+            loop {
+                match user_net_service.read_from_socket(&mut stream, &mut in_buf) {
+                    IoResult::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                        continue;
+                    }
+                    IoResult::Ok(_) => break,
+                    IoResult::FIN => fin = true,
+                    IoResult::Err(msg) => {
+                        internal_messages
+                        .lock()
+                        .unwrap()
+                        .push(
+                            InternalMessage::SystemIOError(format!("An error occurred, user_net_service.read_from_socket() failed with error: {}", msg))
+                        );
+                        return;
+                    }
                 }
             }
-        }
 
-        println!("disconnected");
+            if fin {
+                break;
+            }
+        }
     }
 }

@@ -6,13 +6,12 @@ edition = "2018"
 license = "Zlib"
 
 [dependencies]
-iced = {git = "https://github.com/hecrj/iced.git", commit = "wgpu-0.2.3", features= ["glow"]}
+iced = {git = "https://github.com/hecrj/iced.git", commit = "wgpu-0.2.3", features = ["glow", "tokio"]}
 chrono = "0.4.19"
 png = "0.16.8"
 opener = "0.4.1"
 platform-dirs = "0.3.0"
 bytevec = "0.2.0"
-tokio = { version = "1.5.0", features = ["full"] }
 futures = "0.3.14"
 num-traits = "0.2"
 num-derive = "0.3"

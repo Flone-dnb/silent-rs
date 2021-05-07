@@ -11,7 +11,7 @@ use crate::widgets::users_list::*;
 
 #[derive(Debug, Default)]
 pub struct MainLayout {
-    chat_list: ChatList,
+    pub chat_list: ChatList,
     users_list: UsersList,
 
     pub message_string: String,
@@ -27,7 +27,10 @@ impl MainLayout {
     pub fn add_message(&mut self, message: String, author: String) {
         self.chat_list.add_message(message, author);
     }
-    pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
+    pub fn add_system_message(&mut self, message: String) {
+        self.chat_list.add_message(message, String::from(""));
+    }
+    pub fn view<'a>(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(5)

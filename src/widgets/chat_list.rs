@@ -11,7 +11,7 @@ use crate::MainMessage;
 
 #[derive(Debug)]
 pub struct ChatList {
-    messages: LinkedList<ChatMessage>, // use list instead of vec because we will pop front to maintain 'max_messages' size
+    pub messages: LinkedList<ChatMessage>, // use list instead of vec because we will pop front to maintain 'max_messages' size
     max_messages: usize,
 
     scroll_state: scrollable::State,
@@ -96,33 +96,47 @@ impl ChatMessage {
             time: format!("{}:{}", hour, minute),
         }
     }
-
     pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
-        Column::new()
-            .padding(10)
-            .push(
-                Row::new()
-                    .push(
-                        Text::new(&self.author)
-                            .color(current_style.get_message_author_color())
-                            .size(23)
-                            .horizontal_alignment(HorizontalAlignment::Left)
-                            .vertical_alignment(VerticalAlignment::Top)
-                            .width(Length::Shrink),
-                    )
-                    .push(
-                        Text::new(String::from("  ") + &self.time)
-                            .color(Color::from_rgb(
-                                128 as f32 / 255.0,
-                                128 as f32 / 255.0,
-                                128 as f32 / 255.0,
-                            ))
-                            .size(17)
-                            .horizontal_alignment(HorizontalAlignment::Left)
-                            .vertical_alignment(VerticalAlignment::Bottom)
-                            .width(Length::Shrink),
-                    ),
+        let mut content = Column::new().padding(10).push(
+            Row::new()
+                .push(
+                    Text::new(&self.author)
+                        .color(current_style.get_message_author_color())
+                        .size(23)
+                        .horizontal_alignment(HorizontalAlignment::Left)
+                        .vertical_alignment(VerticalAlignment::Top)
+                        .width(Length::Shrink),
+                )
+                .push(
+                    Text::new(String::from("  ") + &self.time)
+                        .color(Color::from_rgb(
+                            128 as f32 / 255.0,
+                            128 as f32 / 255.0,
+                            128 as f32 / 255.0,
+                        ))
+                        .size(17)
+                        .horizontal_alignment(HorizontalAlignment::Left)
+                        .vertical_alignment(VerticalAlignment::Bottom)
+                        .width(Length::Shrink),
+                ),
+        );
+
+        if self.author == "" {
+            // System message.
+            content = content.push(
+                Text::new(&self.message)
+                    .color(Color::from_rgb(
+                        170 as f32 / 255.0,
+                        30 as f32 / 255.0,
+                        30 as f32 / 255.0,
+                    ))
+                    .size(22),
             )
-            .push(Text::new(&self.message).color(Color::WHITE).size(22))
+        } else {
+            // User message.
+            content = content.push(Text::new(&self.message).color(Color::WHITE).size(22))
+        }
+
+        content
     }
 }
