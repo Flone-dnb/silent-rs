@@ -15,17 +15,11 @@ pub struct ClientConfig {
 }
 
 #[derive(Debug)]
-pub struct NetService {
-    stop_pending: Arc<Mutex<bool>>,
-    stop_receiver: Option<std::sync::mpsc::Receiver<()>>,
-}
+pub struct NetService {}
 
 impl NetService {
     pub fn new() -> Self {
-        Self {
-            stop_pending: Arc::new(Mutex::new(false)),
-            stop_receiver: None,
-        }
+        Self {}
     }
 
     pub fn start(
@@ -35,30 +29,9 @@ impl NetService {
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
-        let (sender, receiver) = mpsc::channel();
-
-        let stop_pending_copy = Arc::clone(&self.stop_pending);
         thread::spawn(move || {
-            NetService::service(
-                config,
-                username,
-                connect_layout_sender,
-                internal_messages,
-                stop_pending_copy,
-                sender,
-            )
+            NetService::service(config, username, connect_layout_sender, internal_messages)
         });
-        self.stop_receiver = Some(receiver);
-    }
-
-    pub fn stop(&mut self) {
-        match &self.stop_receiver {
-            Some(r) => {
-                *self.stop_pending.lock().unwrap() = true;
-                r.recv().unwrap();
-            }
-            None => {}
-        }
     }
 
     fn service(
@@ -66,8 +39,6 @@ impl NetService {
         username: String,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
-        stop_pending: Arc<Mutex<bool>>,
-        stop_sender: std::sync::mpsc::Sender<()>,
     ) {
         let stream = TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
 
@@ -137,13 +108,6 @@ impl NetService {
             loop {
                 match user_net_service.read_from_socket(&mut stream, &mut in_buf) {
                     IoResult::WouldBlock => {
-                        {
-                            let guard = stop_pending.lock().unwrap();
-                            if *guard == true {
-                                stop_sender.send(()).unwrap();
-                                return;
-                            }
-                        }
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                         continue;
                     }
