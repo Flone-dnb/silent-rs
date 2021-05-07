@@ -14,6 +14,8 @@ pub struct MainLayout {
     pub chat_list: ChatList,
     users_list: UsersList,
 
+    pub connected_users: usize,
+
     pub message_string: String,
 
     message_input: text_input::State,
@@ -81,7 +83,7 @@ impl MainLayout {
             .spacing(5)
             .push(Row::new().height(Length::FillPortion(5)))
             .push(
-                Text::new("Connected: 0")
+                Text::new(format!("Connected: {}", self.connected_users))
                     .horizontal_alignment(HorizontalAlignment::Center)
                     .vertical_alignment(VerticalAlignment::Center)
                     .color(Color::WHITE)

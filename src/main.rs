@@ -71,6 +71,7 @@ struct Silent {
 pub enum InternalMessage {
     SystemIOError(String),
     UserMessage(String, String),
+    RefreshConnectedUsersCount(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +143,9 @@ impl Application for Silent {
                         InternalMessage::UserMessage(msg, author) => {
                             self.main_layout.add_message(msg.clone(), author.clone());
                         }
+                        InternalMessage::RefreshConnectedUsersCount(count) => {
+                            self.main_layout.connected_users = count.clone();
+                        }
                     }
                 }
                 guard.clear();
@@ -185,6 +189,7 @@ impl Application for Silent {
                             ConnectResult::Ok => {
                                 self.connect_layout.set_connect_result(ConnectResult::Ok);
                                 self.current_window_layout = WindowLayout::MainWindow;
+                                self.is_connected = true;
                                 break;
                             }
                             ConnectResult::InfoAboutOtherUser(user_info) => {

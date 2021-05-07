@@ -85,6 +85,7 @@ impl NetService {
         match user_net_service.connect_user(&mut stream, username, sender) {
             ConnectResult::Ok => {
                 // Get info about all other users.
+                let mut connected_users = 0usize;
                 loop {
                     let received = receiver.recv().unwrap();
                     if received.is_none() {
@@ -94,9 +95,17 @@ impl NetService {
                         connect_layout_sender
                             .send(ConnectResult::InfoAboutOtherUser(received.unwrap()))
                             .unwrap();
+                        connected_users += 1;
                     }
                 }
                 connect_layout_sender.send(ConnectResult::Ok).unwrap();
+
+                // Include myself.
+                connected_users += 1;
+                internal_messages
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::RefreshConnectedUsersCount(connected_users));
             }
             res => {
                 connect_layout_sender.send(res).unwrap();
