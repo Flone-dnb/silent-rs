@@ -1,4 +1,4 @@
-use iced::{button, Align, Button, Color, Column, Container, Element, Length, Row, Text};
+use iced::{button, Button, Color, Column, Container, Element, Length, Row, Text};
 
 use crate::themes::*;
 use crate::MainMessage;

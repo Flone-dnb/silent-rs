@@ -97,10 +97,16 @@ impl ChatMessage {
         }
     }
     pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
+        let mut author: &str = &self.author;
+
+        if self.author == "" {
+            author = "SYSTEM";
+        }
+
         let mut content = Column::new().padding(10).push(
             Row::new()
                 .push(
-                    Text::new(&self.author)
+                    Text::new(author)
                         .color(current_style.get_message_author_color())
                         .size(23)
                         .horizontal_alignment(HorizontalAlignment::Left)
