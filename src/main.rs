@@ -72,6 +72,8 @@ pub enum InternalMessage {
     SystemIOError(String),
     UserMessage(String, String),
     RefreshConnectedUsersCount(usize),
+    ClearAllUsers,
+    NewUser(String),
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +151,12 @@ impl Application for Silent {
                         InternalMessage::RefreshConnectedUsersCount(count) => {
                             self.main_layout.connected_users = count.clone();
                         }
+                        InternalMessage::ClearAllUsers => {
+                            self.main_layout.clear_all_users();
+                        }
+                        InternalMessage::NewUser(username) => {
+                            self.main_layout.add_user(username.clone());
+                        }
                     }
                 }
                 guard.clear();
@@ -191,6 +199,8 @@ impl Application for Silent {
                         match received {
                             ConnectResult::Ok => {
                                 self.connect_layout.set_connect_result(ConnectResult::Ok);
+                                self.main_layout
+                                    .add_user(self.connect_layout.username_string.clone());
                                 self.current_window_layout = WindowLayout::MainWindow;
                                 self.is_connected = true;
                                 break;

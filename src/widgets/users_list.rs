@@ -25,9 +25,14 @@ impl UsersList {
             .padding(10)
             .style(current_style.theme)
     }
-
+    pub fn clear_all_users(&mut self) {
+        self.users.clear();
+    }
     pub fn add_user(&mut self, username: String) {
         self.users.push(UsersItem::new(username));
+    }
+    pub fn get_user_count(&self) -> usize {
+        self.users.len()
     }
 }
 

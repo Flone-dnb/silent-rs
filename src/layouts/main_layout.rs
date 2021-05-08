@@ -25,12 +25,17 @@ pub struct MainLayout {
 impl MainLayout {
     pub fn add_user(&mut self, username: String) {
         self.users_list.add_user(username);
+        self.connected_users = self.users_list.get_user_count();
     }
     pub fn add_message(&mut self, message: String, author: String) {
         self.chat_list.add_message(message, author);
     }
     pub fn add_system_message(&mut self, message: String) {
         self.chat_list.add_message(message, String::from(""));
+    }
+    pub fn clear_all_users(&mut self) {
+        self.users_list.clear_all_users();
+        self.connected_users = 0;
     }
     pub fn view<'a>(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
         let left: Column<MainMessage> = Column::new()

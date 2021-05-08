@@ -31,7 +31,6 @@ impl ChatList {
             scroll_state: scrollable::State::default(),
         }
     }
-
     pub fn get_ui(&mut self, current_style: &StyleTheme) -> Container<MainMessage> {
         let scroll_area = self.messages.iter().fold(
             Scrollable::new(&mut self.scroll_state)
@@ -46,7 +45,6 @@ impl ChatList {
             .padding(10)
             .style(current_style.theme)
     }
-
     pub fn add_message(&mut self, message: String, author: String) {
         let mut same_author = false;
 

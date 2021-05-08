@@ -1,12 +1,19 @@
+// External.
 use bytevec::{ByteDecodable, ByteEncodable};
-use std::net::*;
-use std::time::Duration;
-use std::{io::prelude::*, thread};
-
 use num_derive::FromPrimitive;
+use num_derive::ToPrimitive;
 use num_traits::FromPrimitive;
 
+// Std.
+use std::io::prelude::*;
+use std::net::*;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
+// Custom.
 use crate::global_params::*;
+use crate::InternalMessage;
 
 pub enum UserState {
     NotConnected,
@@ -18,6 +25,11 @@ enum ConnectServerAnswer {
     Ok = 0,
     WrongVersion = 1,
     UsernameTaken = 2,
+}
+
+#[derive(FromPrimitive, ToPrimitive, PartialEq)]
+pub enum ServerMessage {
+    NewUser = 0,
 }
 
 #[derive(Debug, PartialEq)]
@@ -47,17 +59,28 @@ pub enum IoResult {
     Err(String),
 }
 
+#[derive(Debug, PartialEq)]
+pub enum HandleMessageResult {
+    Ok,
+    IOError(IoResult),
+    OtherErr(String),
+}
+
 pub struct UserNetService {
     pub user_state: UserState,
+    pub io_tcp_mutex: Mutex<()>,
 }
 
 impl UserNetService {
     pub fn new() -> Self {
         UserNetService {
             user_state: UserState::NotConnected,
+            io_tcp_mutex: Mutex::new(()),
         }
     }
-    pub fn read_from_socket(&self, socket: &mut TcpStream, buf: &mut [u8]) -> IoResult {
+    pub fn read_from_socket_tcp(&self, socket: &mut TcpStream, buf: &mut [u8]) -> IoResult {
+        let _io_tcp_guard = self.io_tcp_mutex.lock().unwrap();
+
         // (non-blocking)
         match socket.read(buf) {
             Ok(0) => {
@@ -65,8 +88,8 @@ impl UserNetService {
             }
             Ok(n) => {
                 if n != buf.len() {
-                    return IoResult::Err(String::from(
-                        "socket try_read() failed, error: failed to read 'buf_u16' size",
+                    return IoResult::Err(format!(
+                        "socket try_read() failed, error: failed to read 'buf' size (got: {}, expected: {})", n, buf.len()
                     ));
                 }
 
@@ -83,7 +106,9 @@ impl UserNetService {
             }
         };
     }
-    pub fn write_to_socket(&self, socket: &mut TcpStream, buf: &mut [u8]) -> IoResult {
+    pub fn write_to_socket_tcp(&self, socket: &mut TcpStream, buf: &mut [u8]) -> IoResult {
+        let _io_tcp_guard = self.io_tcp_mutex.lock().unwrap();
+
         // (non-blocking)
         match socket.write(buf) {
             Ok(0) => {
@@ -91,8 +116,8 @@ impl UserNetService {
             }
             Ok(n) => {
                 if n != buf.len() {
-                    return IoResult::Err(String::from(
-                        "socket try_write() failed, error: failed to read 'buf_u16' size",
+                    return IoResult::Err(format!(
+                        "socket try_write() failed, error: failed to read 'buf' size (got: {}, expected: {})", n, buf.len()
                     ));
                 }
 
@@ -108,6 +133,63 @@ impl UserNetService {
                 )));
             }
         };
+    }
+    pub fn handle_message(
+        &mut self,
+        message: ServerMessage,
+        socket: &mut TcpStream,
+        internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
+    ) -> HandleMessageResult {
+        match message {
+            ServerMessage::NewUser => {
+                // Get username len.
+                let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
+                loop {
+                    match self.read_from_socket_tcp(socket, &mut username_len_buf) {
+                        IoResult::WouldBlock => {
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                            continue;
+                        }
+                        IoResult::Ok(_) => break,
+                        res => return HandleMessageResult::IOError(res),
+                    };
+                }
+
+                let username_len = u16::decode::<u16>(&username_len_buf);
+                if username_len.is_err() {
+                    return HandleMessageResult::OtherErr(format!(
+                        "decode::<u16>() failed on 'username_len_buf'."
+                    ));
+                }
+                let username_len = username_len.unwrap();
+
+                let mut username = vec![0u8; username_len as usize];
+                loop {
+                    match self.read_from_socket_tcp(socket, &mut username) {
+                        IoResult::WouldBlock => {
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                            continue;
+                        }
+                        IoResult::Ok(_) => break,
+                        res => return HandleMessageResult::IOError(res),
+                    };
+                }
+
+                let new_username_str = String::from_utf8(username);
+                if new_username_str.is_err() {
+                    return HandleMessageResult::OtherErr(format!(
+                        "String::from_utf8() failed on 'username'."
+                    ));
+                }
+
+                internal_messages_ok_only
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::NewUser(new_username_str.unwrap()));
+            }
+        }
+
+        HandleMessageResult::Ok
     }
     pub fn connect_user(
         &mut self,
@@ -138,7 +220,7 @@ impl UserNetService {
 
         // Send this buffer.
         loop {
-            match self.write_to_socket(socket, &mut out_buffer) {
+            match self.write_to_socket_tcp(socket, &mut out_buffer) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -151,7 +233,7 @@ impl UserNetService {
         // Wait for answer.
         let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
         loop {
-            match self.read_from_socket(socket, &mut in_buf) {
+            match self.read_from_socket_tcp(socket, &mut in_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -168,7 +250,7 @@ impl UserNetService {
             Some(ConnectServerAnswer::WrongVersion) => {
                 // Get correct version string (get size first).
                 loop {
-                    match self.read_from_socket(socket, &mut in_buf) {
+                    match self.read_from_socket_tcp(socket, &mut in_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                             continue;
@@ -182,7 +264,7 @@ impl UserNetService {
                 // Get correct version string.
                 let mut required_ver_str_buf = vec![0u8; required_ver_str_size as usize];
                 loop {
-                    match self.read_from_socket(socket, &mut required_ver_str_buf) {
+                    match self.read_from_socket_tcp(socket, &mut required_ver_str_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                             continue;
@@ -216,7 +298,7 @@ impl UserNetService {
         // Read user count.
         let mut users_count_buf = vec![0u8; std::mem::size_of::<u64>()];
         loop {
-            match self.read_from_socket(socket, &mut users_count_buf) {
+            match self.read_from_socket_tcp(socket, &mut users_count_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -238,7 +320,7 @@ impl UserNetService {
             // Read username len.
             let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
-                match self.read_from_socket(socket, &mut username_len_buf) {
+                match self.read_from_socket_tcp(socket, &mut username_len_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                         continue;
@@ -258,7 +340,7 @@ impl UserNetService {
             // Read username.
             let mut username_buf = vec![0u8; username_len as usize];
             loop {
-                match self.read_from_socket(socket, &mut username_buf) {
+                match self.read_from_socket_tcp(socket, &mut username_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                         continue;

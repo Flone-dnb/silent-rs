@@ -1,3 +1,6 @@
+use bytevec::{ByteDecodable, ByteEncodable};
+use num_traits::FromPrimitive;
+
 use std::net::*;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -40,28 +43,29 @@ impl NetService {
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
-        let stream = TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
+        let tcp_socket =
+            TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
 
-        if stream.is_err() {
+        if tcp_socket.is_err() {
             connect_layout_sender.send(ConnectResult::OtherErr(
                 String::from("Can't connect to the server. Make sure the specified server and port are correct, otherwise the server might be offline.")
             )).unwrap();
             return;
         }
 
-        let mut stream = stream.unwrap();
-        if stream.set_nodelay(true).is_err() {
+        let mut tcp_socket = tcp_socket.unwrap();
+        if tcp_socket.set_nodelay(true).is_err() {
             connect_layout_sender
                 .send(ConnectResult::OtherErr(String::from(
-                    "stream.set_nodelay() failed.",
+                    "tcp_socket.set_nodelay() failed.",
                 )))
                 .unwrap();
             return;
         }
-        if stream.set_nonblocking(true).is_err() {
+        if tcp_socket.set_nonblocking(true).is_err() {
             connect_layout_sender
                 .send(ConnectResult::OtherErr(String::from(
-                    "stream.set_nonblocking() failed.",
+                    "tcp_socket.set_nonblocking() failed.",
                 )))
                 .unwrap();
             return;
@@ -71,7 +75,8 @@ impl NetService {
 
         let (sender, receiver) = mpsc::channel();
 
-        match user_net_service.connect_user(&mut stream, username, sender) {
+        // Connect.
+        match user_net_service.connect_user(&mut tcp_socket, username, sender) {
             ConnectResult::Ok => {
                 // Get info about all other users.
                 let mut connected_users = 0usize;
@@ -102,17 +107,21 @@ impl NetService {
             }
         }
 
+        // Read messages from server.
         loop {
             let mut fin = false;
             let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
-                match user_net_service.read_from_socket(&mut stream, &mut in_buf) {
+                match user_net_service.read_from_socket_tcp(&mut tcp_socket, &mut in_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                         continue;
                     }
-                    IoResult::Ok(_) => break,
-                    IoResult::FIN => fin = true,
+                    IoResult::Ok(_) => {}
+                    IoResult::FIN => {
+                        fin = true;
+                        break;
+                    }
                     IoResult::Err(msg) => {
                         internal_messages
                         .lock()
@@ -123,11 +132,83 @@ impl NetService {
                         return;
                     }
                 }
+
+                // Got something.
+                let message = u16::decode::<u16>(&in_buf);
+                if message.is_err() {
+                    internal_messages
+                        .lock()
+                        .unwrap()
+                        .push(InternalMessage::SystemIOError(String::from(
+                        "An error occurred, decode::<u16> on 'in_buf' failed. Closing connection...",
+                    )));
+                    return;
+                }
+                let message = message.unwrap();
+                let mut _message_id: ServerMessage = ServerMessage::NewUser;
+                match FromPrimitive::from_u16(message as u16) {
+                    Some(ServerMessage::NewUser) => {
+                        _message_id = ServerMessage::NewUser;
+                    }
+                    None => {
+                        fin = true;
+                        internal_messages
+                        .lock()
+                        .unwrap()
+                        .push(InternalMessage::SystemIOError(format!(
+                        "An error occurred, FromPrimitive::from_u16() on 'in_buf' (value: {}) failed. Closing connection...", message
+                    )));
+                        break;
+                    }
+                }
+
+                // Handle message.
+                match user_net_service.handle_message(
+                    _message_id,
+                    &mut tcp_socket,
+                    &internal_messages,
+                ) {
+                    HandleMessageResult::Ok => {}
+                    HandleMessageResult::IOError(err) => match err {
+                        IoResult::FIN => {
+                            fin = true;
+                            break;
+                        }
+                        IoResult::Err(msg) => {
+                            fin = true;
+                            internal_messages
+                                .lock()
+                                .unwrap()
+                                .push(InternalMessage::SystemIOError(format!(
+                                    "An IO error occurred at handle_message(), err: {}",
+                                    msg
+                                )));
+                            break;
+                        }
+                        _ => {}
+                    },
+                    HandleMessageResult::OtherErr(msg) => {
+                        fin = true;
+                        internal_messages
+                            .lock()
+                            .unwrap()
+                            .push(InternalMessage::SystemIOError(format!(
+                                "An error occurred at handle_message(), err: {}",
+                                msg
+                            )));
+                        break;
+                    }
+                }
             }
 
             if fin {
                 break;
             }
         }
+
+        internal_messages
+            .lock()
+            .unwrap()
+            .push(InternalMessage::ClearAllUsers);
     }
 }
