@@ -124,7 +124,10 @@ impl Application for Silent {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // look for new internal messages one time per second
-        time::every(std::time::Duration::from_millis(1000)).map(|_| MainMessage::Tick(()))
+        time::every(std::time::Duration::from_millis(
+            INTERVAL_INTERNAL_MESSAGE_MS,
+        ))
+        .map(|_| MainMessage::Tick(()))
     }
 
     fn update(
