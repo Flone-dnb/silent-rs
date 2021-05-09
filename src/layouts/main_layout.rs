@@ -1,13 +1,14 @@
+// External.
 use iced::{
     button, text_input, Align, Button, Color, Column, Element, HorizontalAlignment, Length, Row,
     Text, TextInput, VerticalAlignment,
 };
 
+// Custom.
 use crate::themes::*;
-use crate::MainMessage;
-
 use crate::widgets::chat_list::*;
 use crate::widgets::users_list::*;
+use crate::MainMessage;
 
 #[derive(Debug, Default)]
 pub struct MainLayout {

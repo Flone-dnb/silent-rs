@@ -1,11 +1,14 @@
+// External.
 use iced::{
     executor, time, window::icon::Icon, Application, Clipboard, Color, Command, Element, Settings,
     Subscription,
 };
 
+// Std.
 use std::fs::File;
 use std::sync::{mpsc, Arc, Mutex};
 
+// Custom.
 mod global_params;
 mod layouts;
 mod services;

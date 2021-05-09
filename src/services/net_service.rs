@@ -1,11 +1,14 @@
+// External.
 use bytevec::{ByteDecodable, ByteEncodable};
 use num_traits::FromPrimitive;
 
+// Std.
 use std::net::*;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+// Custom.
 use crate::global_params::*;
 use crate::services::user_net_service::*;
 use crate::InternalMessage;
