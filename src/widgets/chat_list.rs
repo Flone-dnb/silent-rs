@@ -49,6 +49,28 @@ impl ChatList {
             .padding(10)
             .style(current_style.theme)
     }
+    pub fn add_info_message(&mut self, message: String) {
+        self.messages.push_back(ChatMessage::new(
+            message,
+            String::from(""),
+            MessageType::InfoMessage,
+        ));
+
+        if self.messages.len() > self.max_messages {
+            self.messages.pop_front();
+        }
+    }
+    pub fn add_system_message(&mut self, message: String) {
+        self.messages.push_back(ChatMessage::new(
+            message,
+            String::from(""),
+            MessageType::SystemMessage,
+        ));
+
+        if self.messages.len() > self.max_messages {
+            self.messages.pop_front();
+        }
+    }
     pub fn add_message(&mut self, message: String, author: String) {
         let mut same_author = false;
 
@@ -62,7 +84,8 @@ impl ChatList {
         }
 
         if !same_author {
-            self.messages.push_back(ChatMessage::new(message, author));
+            self.messages
+                .push_back(ChatMessage::new(message, author, MessageType::UserMessage));
 
             if self.messages.len() > self.max_messages {
                 self.messages.pop_front();
@@ -71,15 +94,23 @@ impl ChatList {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy)]
+pub enum MessageType {
+    UserMessage,
+    SystemMessage,
+    InfoMessage,
+}
+
+#[derive(Debug)]
 pub struct ChatMessage {
     message: String,
     author: String,
     time: String,
+    message_type: MessageType,
 }
 
 impl ChatMessage {
-    pub fn new(message: String, author: String) -> Self {
+    pub fn new(message: String, author: String, message_type: MessageType) -> Self {
         let now = Local::now();
         let mut hour: String = now.hour().to_string();
         let mut minute: String = now.minute().to_string();
@@ -96,13 +127,16 @@ impl ChatMessage {
             message,
             author,
             time: format!("{}:{}", hour, minute),
+            message_type,
         }
     }
     pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
         let mut author: &str = &self.author;
 
-        if self.author.is_empty() {
-            author = "SYSTEM";
+        match self.message_type {
+            MessageType::UserMessage => author = &self.author,
+            MessageType::SystemMessage => author = "SYSTEM",
+            MessageType::InfoMessage => author = "INFO",
         }
 
         let mut content = Column::new().padding(10).push(
@@ -129,20 +163,32 @@ impl ChatMessage {
                 ),
         );
 
-        if self.author.is_empty() {
-            // System message.
-            content = content.push(
-                Text::new(&self.message)
-                    .color(Color::from_rgb(
-                        170_f32 / 255.0,
-                        30_f32 / 255.0,
-                        30_f32 / 255.0,
-                    ))
-                    .size(22),
-            )
-        } else {
-            // User message.
-            content = content.push(Text::new(&self.message).color(Color::WHITE).size(22))
+        match self.message_type {
+            MessageType::UserMessage => {
+                content = content.push(Text::new(&self.message).color(Color::WHITE).size(22));
+            }
+            MessageType::SystemMessage => {
+                content = content.push(
+                    Text::new(&self.message)
+                        .color(Color::from_rgb(
+                            170_f32 / 255.0,
+                            30_f32 / 255.0,
+                            30_f32 / 255.0,
+                        ))
+                        .size(22),
+                );
+            }
+            MessageType::InfoMessage => {
+                content = content.push(
+                    Text::new(&self.message)
+                        .color(Color::from_rgb(
+                            128_f32 / 255.0,
+                            128_f32 / 255.0,
+                            128_f32 / 255.0,
+                        ))
+                        .size(22),
+                );
+            }
         }
 
         content

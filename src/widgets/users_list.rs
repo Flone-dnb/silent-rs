@@ -33,6 +33,18 @@ impl UsersList {
     pub fn add_user(&mut self, username: String) {
         self.users.push(UsersItem::new(username));
     }
+    pub fn remove_user(&mut self, username: String) -> Result<(), String> {
+        for (i, user) in self.users.iter().enumerate() {
+            if user.username == username {
+                self.users.remove(i);
+                return Ok(());
+            }
+        }
+
+        Err(format!(
+            "An error occurred at UsersList::remove_user(), error: can't find user with name '{}' at [{}, {}]",
+            username, file!(), line!()))
+    }
     pub fn get_user_count(&self) -> usize {
         self.users.len()
     }

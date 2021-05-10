@@ -24,15 +24,31 @@ pub struct MainLayout {
 }
 
 impl MainLayout {
-    pub fn add_user(&mut self, username: String) {
-        self.users_list.add_user(username);
+    pub fn add_user(&mut self, username: String, dont_show_notice: bool) {
+        self.users_list.add_user(username.clone());
         self.connected_users = self.users_list.get_user_count();
+        if !dont_show_notice {
+            self.add_info_message(format!("{} just connected to the chat.", username));
+        }
+    }
+    pub fn remove_user(&mut self, username: String) -> Result<(), String> {
+        match self.users_list.remove_user(username.clone()) {
+            Err(msg) => return Err(format!("{} at [{}, {}]", msg, file!(), line!())),
+            Ok(()) => {
+                self.connected_users = self.users_list.get_user_count();
+                self.add_info_message(format!("{} disconnected from the chat.", username));
+                return Ok(());
+            }
+        }
     }
     pub fn add_message(&mut self, message: String, author: String) {
         self.chat_list.add_message(message, author);
     }
     pub fn add_system_message(&mut self, message: String) {
-        self.chat_list.add_message(message, String::from(""));
+        self.chat_list.add_system_message(message);
+    }
+    pub fn add_info_message(&mut self, message: String) {
+        self.chat_list.add_info_message(message);
     }
     pub fn clear_all_users(&mut self) {
         self.users_list.clear_all_users();

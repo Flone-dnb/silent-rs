@@ -77,7 +77,8 @@ pub enum InternalMessage {
     UserMessage(String, String),
     RefreshConnectedUsersCount(usize),
     ClearAllUsers,
-    NewUser(String),
+    UserConnected(String),
+    UserDisconnected(String),
 }
 
 #[derive(Debug, Clone)]
@@ -171,8 +172,13 @@ impl Application for Silent {
                         InternalMessage::ClearAllUsers => {
                             self.main_layout.clear_all_users();
                         }
-                        InternalMessage::NewUser(username) => {
-                            self.main_layout.add_user(username.clone());
+                        InternalMessage::UserConnected(username) => {
+                            self.main_layout.add_user(username.clone(), false);
+                        }
+                        InternalMessage::UserDisconnected(username) => {
+                            if let Err(msg) = self.main_layout.remove_user(username.clone()) {
+                                self.main_layout.add_system_message(msg);
+                            }
                         }
                     }
                 }
@@ -217,7 +223,7 @@ impl Application for Silent {
                             ConnectResult::Ok => {
                                 self.connect_layout.set_connect_result(ConnectResult::Ok);
                                 self.main_layout
-                                    .add_user(self.connect_layout.username_string.clone());
+                                    .add_user(self.connect_layout.username_string.clone(), true);
                                 self.current_window_layout = WindowLayout::MainWindow;
                                 self.is_connected = true;
 
@@ -233,7 +239,7 @@ impl Application for Silent {
                                 break;
                             }
                             ConnectResult::InfoAboutOtherUser(user_info) => {
-                                self.main_layout.add_user(user_info.username);
+                                self.main_layout.add_user(user_info.username, true);
                             }
                             _ => {
                                 self.connect_layout.set_connect_result(received);

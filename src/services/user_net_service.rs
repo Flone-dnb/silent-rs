@@ -29,7 +29,8 @@ enum ConnectServerAnswer {
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
 pub enum ServerMessage {
-    NewUser = 0,
+    UserConnected = 0,
+    UserDisconnected = 1,
 }
 
 #[derive(Debug, PartialEq)]
@@ -147,53 +148,51 @@ impl UserNetService {
         internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
     ) -> HandleMessageResult {
         match message {
-            ServerMessage::NewUser => {
-                // Get username len.
-                let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
-                loop {
-                    match self.read_from_socket_tcp(socket, &mut username_len_buf) {
-                        IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                            continue;
+            ServerMessage::UserConnected => {
+                let mut username = String::new();
+                match self.read_u16_and_string_from_socket(socket) {
+                    Ok(name) => username = name,
+                    Err(io_e) => match io_e {
+                        IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
+                        IoResult::Err(msg) => {
+                            return HandleMessageResult::IOError(IoResult::Err(format!(
+                                "{} at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
+                            )))
                         }
-                        IoResult::Ok(_) => break,
-                        res => return HandleMessageResult::IOError(res),
-                    };
-                }
-
-                let username_len = u16::decode::<u16>(&username_len_buf);
-                if let Err(e) = username_len {
-                    return HandleMessageResult::OtherErr(format!(
-                        "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
-                        e, file!(), line!()
-                    ));
-                }
-                let username_len = username_len.unwrap();
-
-                let mut username = vec![0u8; username_len as usize];
-                loop {
-                    match self.read_from_socket_tcp(socket, &mut username) {
-                        IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                            continue;
-                        }
-                        IoResult::Ok(_) => break,
-                        res => return HandleMessageResult::IOError(res),
-                    };
-                }
-
-                let new_username_str = String::from_utf8(username);
-                if let Err(e) = new_username_str {
-                    return HandleMessageResult::OtherErr(format!(
-                        "String::from_utf8() failed, error: failed to convert on 'username' (error: {}) at [{}, {}]",
-                        e, file!(), line!()
-                    ));
+                        _ => {}
+                    },
                 }
 
                 internal_messages_ok_only
                     .lock()
                     .unwrap()
-                    .push(InternalMessage::NewUser(new_username_str.unwrap()));
+                    .push(InternalMessage::UserConnected(username));
+            }
+            ServerMessage::UserDisconnected => {
+                let mut username = String::new();
+                match self.read_u16_and_string_from_socket(socket) {
+                    Ok(name) => username = name,
+                    Err(io_e) => match io_e {
+                        IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
+                        IoResult::Err(msg) => {
+                            return HandleMessageResult::IOError(IoResult::Err(format!(
+                                "{} at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
+                            )))
+                        }
+                        _ => {}
+                    },
+                }
+
+                internal_messages_ok_only
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::UserDisconnected(username));
             }
         }
 
@@ -377,5 +376,66 @@ impl UserNetService {
         self.user_state = UserState::Connected;
 
         return ConnectResult::Ok;
+    }
+    fn read_u16_and_string_from_socket(&self, socket: &mut TcpStream) -> Result<String, IoResult> {
+        // Get len (u16).
+        let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
+        loop {
+            match self.read_from_socket_tcp(socket, &mut len_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                IoResult::FIN => return Err(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return Err(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+            };
+        }
+
+        let len = u16::decode::<u16>(&len_buf);
+        if let Err(e) = len {
+            return Err(IoResult::Err(format!(
+                "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
+                e, file!(), line!()
+            )));
+        }
+        let len = len.unwrap();
+
+        let mut string_buf = vec![0u8; len as usize];
+        loop {
+            match self.read_from_socket_tcp(socket, &mut string_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                IoResult::FIN => return Err(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return Err(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+            };
+        }
+
+        let string = String::from_utf8(string_buf);
+        if let Err(e) = string {
+            return Err(IoResult::Err(format!(
+                "String::from_utf8() failed, error: failed to convert on 'username' (error: {}) at [{}, {}]",
+                e, file!(), line!()
+            )));
+        }
+
+        Ok(string.unwrap())
     }
 }

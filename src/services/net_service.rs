@@ -159,10 +159,13 @@ impl NetService {
                     return;
                 }
                 let message = message.unwrap();
-                let mut _message_id: ServerMessage = ServerMessage::NewUser;
+                let mut _message_id: ServerMessage = ServerMessage::UserConnected;
                 match FromPrimitive::from_u16(message as u16) {
-                    Some(ServerMessage::NewUser) => {
-                        _message_id = ServerMessage::NewUser;
+                    Some(ServerMessage::UserConnected) => {
+                        _message_id = ServerMessage::UserConnected;
+                    }
+                    Some(ServerMessage::UserDisconnected) => {
+                        _message_id = ServerMessage::UserDisconnected;
                     }
                     None => {
                         fin = true;
