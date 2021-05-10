@@ -89,7 +89,8 @@ impl UserNetService {
             Ok(n) => {
                 if n != buf.len() {
                     return IoResult::Err(format!(
-                        "socket try_read() failed, error: failed to read 'buf' size (got: {}, expected: {})", n, buf.len()
+                        "TcpStream::read() failed, error: failed to read to 'buf' (got: {}, expected: {}) at [{}, {}]",
+                        n, buf.len(), file!(), line!()
                     ));
                 }
 
@@ -99,10 +100,12 @@ impl UserNetService {
                 return IoResult::WouldBlock;
             }
             Err(e) => {
-                return IoResult::Err(String::from(format!(
-                    "socket try_read() failed, error: {}",
-                    e
-                )));
+                return IoResult::Err(format!(
+                    "TcpStream::read() failed, error: {} at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                ));
             }
         };
     }
@@ -117,7 +120,8 @@ impl UserNetService {
             Ok(n) => {
                 if n != buf.len() {
                     return IoResult::Err(format!(
-                        "socket try_write() failed, error: failed to read 'buf' size (got: {}, expected: {})", n, buf.len()
+                        "TcpStream::write() failed, error: failed to write to 'buf' (got: {}, expected: {}) at [{}, {}]",
+                        n, buf.len(), file!(), line!()
                     ));
                 }
 
@@ -128,8 +132,10 @@ impl UserNetService {
             }
             Err(e) => {
                 return IoResult::Err(String::from(format!(
-                    "socket try_write() failed, error: {}",
-                    e
+                    "TcpStream::write() failed, error: {} at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
                 )));
             }
         };
@@ -156,9 +162,10 @@ impl UserNetService {
                 }
 
                 let username_len = u16::decode::<u16>(&username_len_buf);
-                if username_len.is_err() {
+                if let Err(e) = username_len {
                     return HandleMessageResult::OtherErr(format!(
-                        "decode::<u16>() failed on 'username_len_buf'."
+                        "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
+                        e, file!(), line!()
                     ));
                 }
                 let username_len = username_len.unwrap();
@@ -176,9 +183,10 @@ impl UserNetService {
                 }
 
                 let new_username_str = String::from_utf8(username);
-                if new_username_str.is_err() {
+                if let Err(e) = new_username_str {
                     return HandleMessageResult::OtherErr(format!(
-                        "String::from_utf8() failed on 'username'."
+                        "String::from_utf8() failed, error: failed to convert on 'username' (error: {}) at [{}, {}]",
+                        e, file!(), line!()
                     ));
                 }
 
@@ -274,22 +282,23 @@ impl UserNetService {
                     }
                 }
                 let ver_str = std::str::from_utf8(&required_ver_str_buf);
-                if ver_str.is_err(){
-                    return ConnectResult::OtherErr(String::from("from_utf8() failed on required_ver_str_buf"));
+                if let Err(e) = ver_str{
+                    return ConnectResult::OtherErr(
+                        format!("std::str::from_utf8() failed, error: failed to convert on 'required_ver_str_buf' (error: {}) at [{}, {}]",
+                        e, file!(), line!()));
                 }
                 return ConnectResult::OtherErr(
-                    String::from(
                         format!(
                             "Your client version ({}) is not supported by this server. The server supports version ({}).",
                             env!("CARGO_PKG_VERSION"),
                             std::str::from_utf8(&required_ver_str_buf).unwrap()
                         )
-                    ));
+                    );
             }
             Some(ConnectServerAnswer::UsernameTaken) =>
             return ConnectResult::OtherErr(String::from("Somebody with your username already persists on the server. Please, choose another username.")),
             None => {
-                return ConnectResult::OtherErr(String::from("FromPrimitive::from_i32 failed()"))
+                return ConnectResult::OtherErr(format!("FromPrimitive::from_i32() failed at [{}, {}]", file!(), line!()))
             }
         }
 
@@ -309,9 +318,10 @@ impl UserNetService {
         }
 
         let user_count = u64::decode::<u64>(&users_count_buf);
-        if user_count.is_err() {
-            return ConnectResult::OtherErr(String::from(
-                "decode::<u64> failed on users_count_buf",
+        if let Err(e) = user_count {
+            return ConnectResult::OtherErr(format!(
+                "u64::decode::<u64>() failed, error: failed to decode on 'users_count_buf' (error: {}) at [{}, {}]",
+                e, file!(), line!()
             ));
         }
         let user_count = user_count.unwrap();
@@ -330,9 +340,10 @@ impl UserNetService {
                 }
             }
             let username_len = u16::decode::<u16>(&username_len_buf);
-            if username_len.is_err() {
-                return ConnectResult::OtherErr(String::from(
-                    "decode::<u16> failed on username_len_buf",
+            if let Err(e) = username_len {
+                return ConnectResult::OtherErr(format!(
+                    "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
+                    e, file!(), line!()
                 ));
             }
             let username_len = username_len.unwrap();
@@ -350,8 +361,10 @@ impl UserNetService {
                 }
             }
             let username = std::str::from_utf8(&username_buf);
-            if username.is_err() {
-                return ConnectResult::OtherErr(String::from("from_utf8() failed on username_buf"));
+            if let Err(e) = username {
+                return ConnectResult::OtherErr(
+                    format!("std::str::from_utf8() failed, error: failed to convert on 'username_buf' (error: {}) at [{}, {}]",
+                    e, file!(), line!()));
             }
 
             info_sender

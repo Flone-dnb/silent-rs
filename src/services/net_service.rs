@@ -104,6 +104,13 @@ impl NetService {
                     .unwrap()
                     .push(InternalMessage::RefreshConnectedUsersCount(connected_users));
             }
+            ConnectResult::Err(io_error) => {
+                let mut err = io_error;
+                if let IoResult::Err(msg) = err {
+                    err = IoResult::Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+                }
+                connect_layout_sender.send(ConnectResult::Err(err)).unwrap();
+            }
             res => {
                 connect_layout_sender.send(res).unwrap();
                 return;
@@ -127,23 +134,27 @@ impl NetService {
                     }
                     IoResult::Err(msg) => {
                         internal_messages
-                        .lock()
-                        .unwrap()
-                        .push(
-                            InternalMessage::SystemIOError(format!("An error occurred, user_net_service.read_from_socket() failed with error: {}", msg))
-                        );
+                            .lock()
+                            .unwrap()
+                            .push(InternalMessage::SystemIOError(format!(
+                                "{} at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
+                            )));
                         return;
                     }
                 }
 
                 // Got something.
                 let message = u16::decode::<u16>(&in_buf);
-                if message.is_err() {
+                if let Err(e) = message {
                     internal_messages
                         .lock()
                         .unwrap()
-                        .push(InternalMessage::SystemIOError(String::from(
-                        "An error occurred, decode::<u16> on 'in_buf' failed. Closing connection...",
+                        .push(InternalMessage::SystemIOError(format!(
+                        "u16::decode::<u16>() failed, error: failed to decode on 'in_buf' (error: {}) at [{}, {}].\nClosing connection...",
+                        e, file!(), line!()
                     )));
                     return;
                 }
@@ -159,7 +170,8 @@ impl NetService {
                         .lock()
                         .unwrap()
                         .push(InternalMessage::SystemIOError(format!(
-                        "An error occurred, FromPrimitive::from_u16() on 'in_buf' (value: {}) failed. Closing connection...", message
+                        "FromPrimitive::from_u16() failed on 'in_buf' (value: {}) at [{}, {}].\nClosing connection...",
+                        message, file!(), line!()
                     )));
                         break;
                     }
@@ -183,8 +195,10 @@ impl NetService {
                                 .lock()
                                 .unwrap()
                                 .push(InternalMessage::SystemIOError(format!(
-                                    "An IO error occurred at handle_message(), err: {}",
-                                    msg
+                                    "{} at [{}, {}",
+                                    msg,
+                                    file!(),
+                                    line!()
                                 )));
                             break;
                         }
@@ -196,8 +210,10 @@ impl NetService {
                             .lock()
                             .unwrap()
                             .push(InternalMessage::SystemIOError(format!(
-                                "An error occurred at handle_message(), err: {}",
-                                msg
+                                "{} at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
                             )));
                         break;
                     }
