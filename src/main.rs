@@ -72,6 +72,7 @@ struct Silent {
 
 #[derive(Debug, Clone)]
 pub enum InternalMessage {
+    InitUserConfig,
     SystemIOError(String),
     UserMessage(String, String),
     RefreshConnectedUsersCount(usize),
@@ -97,6 +98,9 @@ pub enum MainMessage {
 
 impl Silent {
     fn new() -> Self {
+        let mut messages = Vec::new();
+        messages.push(InternalMessage::InitUserConfig);
+
         Silent {
             current_window_layout: WindowLayout::ConnectWindow,
             style: StyleTheme::new(Theme::Default),
@@ -105,7 +109,7 @@ impl Silent {
             main_layout: MainLayout::default(),
             is_connected: false,
             net_service: NetService::new(),
-            internal_messages: Arc::new(Mutex::new(Vec::new())),
+            internal_messages: Arc::new(Mutex::new(messages)),
         }
     }
 }
@@ -145,6 +149,17 @@ impl Application for Silent {
                 let mut guard = self.internal_messages.lock().unwrap();
                 for message in guard.iter() {
                     match message {
+                        InternalMessage::InitUserConfig => {
+                            if let Err(msg) = self.connect_layout.read_user_config() {
+                                self.connect_layout // use connect result to show this error
+                                    .set_connect_result(ConnectResult::OtherErr(format!(
+                                        "{} at [{}, {}]",
+                                        msg,
+                                        file!(),
+                                        line!()
+                                    )));
+                            }
+                        }
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
                         }
@@ -206,6 +221,16 @@ impl Application for Silent {
                                     .add_user(self.connect_layout.username_string.clone());
                                 self.current_window_layout = WindowLayout::MainWindow;
                                 self.is_connected = true;
+
+                                // Save config.
+                                if let Err(msg) = self.connect_layout.save_user_config() {
+                                    self.main_layout.add_system_message(format!(
+                                        "{} at [{}, {}]",
+                                        msg,
+                                        file!(),
+                                        line!()
+                                    ));
+                                }
                                 break;
                             }
                             ConnectResult::InfoAboutOtherUser(user_info) => {

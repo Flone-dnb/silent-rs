@@ -5,6 +5,7 @@ use iced::{
 
 // Custom.
 use crate::global_params::*;
+use crate::services::config_service::*;
 use crate::services::net_service::ClientConfig;
 use crate::services::user_net_service::{ConnectResult, IoResult};
 use crate::themes::*;
@@ -50,6 +51,34 @@ impl Default for ConnectLayout {
 }
 
 impl ConnectLayout {
+    pub fn read_user_config(&mut self) -> Result<(), String> {
+        let config = UserConfig::new();
+        if let Err(msg) = config {
+            return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+        }
+        let config = config.unwrap();
+
+        self.username_string = config.username;
+        self.servername_string = config.server;
+        self.port_string = config.server_port.to_string();
+        self.password_string = config.server_password;
+
+        Ok(())
+    }
+    pub fn save_user_config(&self) -> Result<(), String> {
+        let config = UserConfig::new();
+        if let Err(msg) = config {
+            return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+        }
+        let mut config = config.unwrap();
+
+        config.username = self.username_string.clone();
+        config.server = self.servername_string.clone();
+        config.server_port = self.port_string.parse::<u16>().unwrap();
+        config.server_password = self.password_string.clone();
+
+        config.save()
+    }
     pub fn is_data_filled(&mut self) -> Result<ClientConfig, ()> {
         if self.servername_string.chars().count() > 1
             && self.username_string.chars().count() > 1
