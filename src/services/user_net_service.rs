@@ -131,12 +131,12 @@ impl UserNetService {
                 return IoResult::WouldBlock;
             }
             Err(e) => {
-                return IoResult::Err(String::from(format!(
+                return IoResult::Err(format!(
                     "TcpStream::write() failed, error: {} at [{}, {}]",
                     e,
                     file!(),
                     line!()
-                )));
+                ));
             }
         };
     }

@@ -98,8 +98,7 @@ pub enum MainMessage {
 
 impl Silent {
     fn new() -> Self {
-        let mut messages = Vec::new();
-        messages.push(InternalMessage::InitUserConfig);
+        let messages = vec![InternalMessage::InitUserConfig];
 
         Silent {
             current_window_layout: WindowLayout::ConnectWindow,
@@ -167,7 +166,7 @@ impl Application for Silent {
                             self.main_layout.add_message(msg.clone(), author.clone());
                         }
                         InternalMessage::RefreshConnectedUsersCount(count) => {
-                            self.main_layout.connected_users = count.clone();
+                            self.main_layout.connected_users = *count;
                         }
                         InternalMessage::ClearAllUsers => {
                             self.main_layout.clear_all_users();

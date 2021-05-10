@@ -64,9 +64,9 @@ impl UsersItem {
             .push(
                 Text::new(String::from("  [") + &self.ping_in_ms.to_string()[..] + " ms]")
                     .color(Color::from_rgb(
-                        128 as f32 / 255.0,
-                        128 as f32 / 255.0,
-                        128 as f32 / 255.0,
+                        128_f32 / 255.0,
+                        128_f32 / 255.0,
+                        128_f32 / 255.0,
                     ))
                     .size(17)
                     .horizontal_alignment(HorizontalAlignment::Left)

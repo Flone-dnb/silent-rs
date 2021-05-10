@@ -3,17 +3,16 @@ use iced::{
     button, checkbox, container, progress_bar, radio, rule, scrollable, slider, text_input, Color,
 };
 
-const SURFACE: Color = Color::from_rgb(30 as f32 / 255.0, 30 as f32 / 255.0, 30 as f32 / 255.0);
+const SURFACE: Color = Color::from_rgb(30_f32 / 255.0, 30_f32 / 255.0, 30_f32 / 255.0);
 
-const ACTIVE: Color = Color::from_rgb(75 as f32 / 255.0, 0 as f32 / 255.0, 0 as f32 / 255.0);
+const ACTIVE: Color = Color::from_rgb(75_f32 / 255.0, 0_f32 / 255.0, 0_f32 / 255.0);
 
-const HOVERED: Color = Color::from_rgb(95 as f32 / 255.0, 0 as f32 / 255.0, 0 as f32 / 255.0);
+const HOVERED: Color = Color::from_rgb(95_f32 / 255.0, 0_f32 / 255.0, 0_f32 / 255.0);
 
 pub const MESSAGE_AUTHOR_COLOR: Color =
-    Color::from_rgb(170 as f32 / 255.0, 30 as f32 / 255.0, 30 as f32 / 255.0);
+    Color::from_rgb(170_f32 / 255.0, 30_f32 / 255.0, 30_f32 / 255.0);
 
-pub const BACKGROUND_COLOR: Color =
-    Color::from_rgb(25 as f32 / 255.0, 25 as f32 / 255.0, 25 as f32 / 255.0);
+pub const BACKGROUND_COLOR: Color = Color::from_rgb(25_f32 / 255.0, 25_f32 / 255.0, 25_f32 / 255.0);
 
 const BORDER_RADIUS: f32 = 5.0;
 

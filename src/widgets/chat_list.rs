@@ -54,14 +54,14 @@ impl ChatList {
 
         if let Some(last_message) = self.messages.back_mut() {
             if last_message.author == author {
-                last_message.message.push_str("\n");
+                last_message.message.push('\n');
                 last_message.message.push_str(&message);
 
                 same_author = true;
             }
         }
 
-        if same_author == false {
+        if !same_author {
             self.messages.push_back(ChatMessage::new(message, author));
 
             if self.messages.len() > self.max_messages {
@@ -101,7 +101,7 @@ impl ChatMessage {
     pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
         let mut author: &str = &self.author;
 
-        if self.author == "" {
+        if self.author.is_empty() {
             author = "SYSTEM";
         }
 
@@ -118,9 +118,9 @@ impl ChatMessage {
                 .push(
                     Text::new(String::from("  ") + &self.time)
                         .color(Color::from_rgb(
-                            128 as f32 / 255.0,
-                            128 as f32 / 255.0,
-                            128 as f32 / 255.0,
+                            128_f32 / 255.0,
+                            128_f32 / 255.0,
+                            128_f32 / 255.0,
                         ))
                         .size(17)
                         .horizontal_alignment(HorizontalAlignment::Left)
@@ -129,14 +129,14 @@ impl ChatMessage {
                 ),
         );
 
-        if self.author == "" {
+        if self.author.is_empty() {
             // System message.
             content = content.push(
                 Text::new(&self.message)
                     .color(Color::from_rgb(
-                        170 as f32 / 255.0,
-                        30 as f32 / 255.0,
-                        30 as f32 / 255.0,
+                        170_f32 / 255.0,
+                        30_f32 / 255.0,
+                        30_f32 / 255.0,
                     ))
                     .size(22),
             )

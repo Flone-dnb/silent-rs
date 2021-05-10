@@ -38,7 +38,7 @@ impl MainLayout {
         self.users_list.clear_all_users();
         self.connected_users = 0;
     }
-    pub fn view<'a>(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
+    pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
         let left: Column<MainMessage> = Column::new()
             .align_items(Align::Center)
             .padding(5)

@@ -1,6 +1,5 @@
 // External.
 use bytevec::{ByteDecodable, ByteEncodable};
-use chrono::prelude::*;
 use platform_dirs::UserDirs;
 
 // Std.
@@ -77,8 +76,8 @@ impl UserConfig {
                 line!()
             ));
         }
-        let mut buf = buf.unwrap();
-        if let Err(e) = config_file.write(&mut buf) {
+        let buf = buf.unwrap();
+        if let Err(e) = config_file.write(&buf) {
             return Err(format!(
                 "File::write() failed, error: can't write config version to config file (error: {}) at [{}, {}]",
                 e,
@@ -372,7 +371,7 @@ impl UserConfig {
         let config_dir = String::from(user_dirs.document_dir.to_str().unwrap());
 
         let mut _config_file_path = config_dir;
-        if !_config_file_path.ends_with("/") && !_config_file_path.ends_with("\\") {
+        if !_config_file_path.ends_with('/') && !_config_file_path.ends_with('\\') {
             _config_file_path += "/";
         }
 
@@ -421,9 +420,9 @@ impl UserConfig {
                 line!()
             ));
         }
-        let mut buf = buf.unwrap();
+        let buf = buf.unwrap();
 
-        if let Err(e) = file.write(&mut buf) {
+        if let Err(e) = file.write(&buf) {
             return Err(format!(
                 "File::write() failed, error: can't write u16 to config file (error: {}) at [{}, {}]",
                 e,
@@ -433,9 +432,9 @@ impl UserConfig {
         }
         Ok(())
     }
-    fn write_string_to_file(file: &mut File, string: &String) -> Result<(), String> {
-        let mut buf = string.as_bytes();
-        if let Err(e) = file.write(&mut buf) {
+    fn write_string_to_file(file: &mut File, string: &str) -> Result<(), String> {
+        let buf = string.as_bytes();
+        if let Err(e) = file.write(&buf) {
             return Err(format!(
                 "File::write() failed, error: can't write string to config file (error: {}) at [{}, {}]",
                 e,
