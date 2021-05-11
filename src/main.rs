@@ -84,6 +84,7 @@ pub enum InternalMessage {
 #[derive(Debug, Clone)]
 pub enum MainMessage {
     MessageInputChanged(String),
+    MessageInputEnterPressed,
     UsernameInputChanged(String),
     ServernameInputChanged(String),
     PortInputChanged(String),
@@ -187,6 +188,14 @@ impl Application for Silent {
             MainMessage::MessageInputChanged(text) => {
                 if text.chars().count() <= MAX_MESSAGE_SIZE {
                     self.main_layout.message_string = text
+                }
+            }
+            MainMessage::MessageInputEnterPressed => {
+                let message = self.main_layout.get_message_input();
+                if !message.is_empty() {
+                    if let Err(msg) = self.net_service.send_user_message(message) {
+                        self.main_layout.add_system_message(msg);
+                    }
                 }
             }
             MainMessage::UsernameInputChanged(text) => {

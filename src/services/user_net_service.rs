@@ -3,6 +3,7 @@ use bytevec::{ByteDecodable, ByteEncodable};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::FromPrimitive;
+use num_traits::ToPrimitive;
 
 // Std.
 use std::io::prelude::*;
@@ -15,6 +16,7 @@ use std::time::Duration;
 use crate::global_params::*;
 use crate::InternalMessage;
 
+#[derive(Debug)]
 pub enum UserState {
     NotConnected,
     Connected,
@@ -31,6 +33,11 @@ enum ConnectServerAnswer {
 pub enum ServerMessage {
     UserConnected = 0,
     UserDisconnected = 1,
+}
+
+#[derive(FromPrimitive, ToPrimitive, PartialEq)]
+pub enum ClientMessage {
+    UserMessage = 0,
 }
 
 #[derive(Debug, PartialEq)]
@@ -67,23 +74,130 @@ pub enum HandleMessageResult {
     OtherErr(String),
 }
 
-pub struct UserNetService {
+#[derive(Debug)]
+pub struct UserTcpService {
     pub user_state: UserState,
+    pub user_info: UserInfo,
+    pub tcp_socket: Option<TcpStream>,
     pub io_tcp_mutex: Mutex<()>,
 }
 
-impl UserNetService {
+impl UserTcpService {
     pub fn new() -> Self {
-        UserNetService {
+            UserTcpService {
             user_state: UserState::NotConnected,
+            tcp_socket: None,
+            user_info: UserInfo {
+                username: String::from(""),
+            },
             io_tcp_mutex: Mutex::new(()),
         }
     }
-    pub fn read_from_socket_tcp(&self, socket: &mut TcpStream, buf: &mut [u8]) -> IoResult {
+    pub fn send_user_text_message(&mut self, message: String) -> HandleMessageResult {
+        if self.tcp_socket.is_none() {
+            return HandleMessageResult::OtherErr(format!(
+                "UserNetService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
+            ));
+        }
+
+        // Send data:
+        // (u16) - data ID (user message)
+        // (u16) - username.len()
+        // (size) - username
+        // (u16) - message.len()
+        // (size) - message
+
+        // Prepare data ID buffer.
+        let data_id = ClientMessage::UserMessage.to_u16();
+        if data_id.is_none() {
+            return HandleMessageResult::OtherErr(format!(
+                "ClientMessage::UserMessage.to_u16() failed at [{}, {}]",
+                file!(),
+                line!()
+            ));
+        }
+        let data_id = data_id.unwrap();
+        let data_id_buf = u16::encode::<u16>(&data_id);
+        if let Err(e) = data_id_buf {
+            return HandleMessageResult::OtherErr(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                data_id,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut data_id_buf = data_id_buf.unwrap();
+
+        // Prepare username len buffer.
+        let username_len = self.user_info.username.len() as u16;
+        let username_len_buf = u16::encode::<u16>(&username_len);
+        if let Err(e) = username_len_buf {
+            return HandleMessageResult::OtherErr(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                username_len,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut username_len_buf = username_len_buf.unwrap();
+
+        // Prepare username buffer.
+        let mut username_buf = Vec::from(self.user_info.username.as_bytes());
+
+        // Prepare message len buffer.
+        let message_len = message.len() as u16;
+        let message_len_buf = u16::encode::<u16>(&message_len);
+        if let Err(e) = message_len_buf {
+            return HandleMessageResult::OtherErr(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                message_len,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut message_len_buf = message_len_buf.unwrap();
+
+        // Prepare message buffer.
+        let mut message_buf = Vec::from(message.as_bytes());
+
+        // Merge all to one buffer.
+        let mut out_buffer: Vec<u8> = Vec::new();
+        out_buffer.append(&mut data_id_buf);
+        out_buffer.append(&mut username_len_buf);
+        out_buffer.append(&mut username_buf);
+        out_buffer.append(&mut message_len_buf);
+        out_buffer.append(&mut message_buf);
+
+        // Send to server.
+        loop {
+            match self.write_to_socket_tcp(&mut out_buffer) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS_UNDER_MUTEX));
+                    continue;
+                }
+                IoResult::Ok(_bytes) => break,
+                res => return HandleMessageResult::IOError(res),
+            }
+        }
+
+        HandleMessageResult::Ok
+    }
+    pub fn read_from_socket_tcp(&mut self, buf: &mut [u8]) -> IoResult {
+        if self.tcp_socket.is_none() {
+            return IoResult::Err(format!(
+                "UserNetService::read_from_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
+                file!(),
+                line!()
+            ));
+        }
+
         let _io_tcp_guard = self.io_tcp_mutex.lock().unwrap();
 
         // (non-blocking)
-        match socket.read(buf) {
+        match self.tcp_socket.as_mut().unwrap().read(buf) {
             Ok(0) => {
                 return IoResult::FIN;
             }
@@ -110,11 +224,19 @@ impl UserNetService {
             }
         };
     }
-    pub fn write_to_socket_tcp(&self, socket: &mut TcpStream, buf: &mut [u8]) -> IoResult {
+    pub fn write_to_socket_tcp(&mut self, buf: &mut [u8]) -> IoResult {
+        if self.tcp_socket.is_none() {
+            return IoResult::Err(format!(
+                "UserNetService::write_to_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
+                file!(),
+                line!()
+            ));
+        }
+
         let _io_tcp_guard = self.io_tcp_mutex.lock().unwrap();
 
         // (non-blocking)
-        match socket.write(buf) {
+        match self.tcp_socket.as_mut().unwrap().write(buf) {
             Ok(0) => {
                 return IoResult::FIN;
             }
@@ -141,16 +263,15 @@ impl UserNetService {
             }
         };
     }
-    pub fn handle_message(
+    pub fn handle_tcp_message(
         &mut self,
         message: ServerMessage,
-        socket: &mut TcpStream,
         internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
     ) -> HandleMessageResult {
         match message {
             ServerMessage::UserConnected => {
                 let mut username = String::new();
-                match self.read_u16_and_string_from_socket(socket) {
+                match self.read_u16_and_string_from_socket_under_mutex() {
                     Ok(name) => username = name,
                     Err(io_e) => match io_e {
                         IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
@@ -173,7 +294,7 @@ impl UserNetService {
             }
             ServerMessage::UserDisconnected => {
                 let mut username = String::new();
-                match self.read_u16_and_string_from_socket(socket) {
+                match self.read_u16_and_string_from_socket_under_mutex() {
                     Ok(name) => username = name,
                     Err(io_e) => match io_e {
                         IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
@@ -200,8 +321,6 @@ impl UserNetService {
     }
     pub fn connect_user(
         &mut self,
-        socket: &mut TcpStream,
-        username: String,
         info_sender: std::sync::mpsc::Sender<Option<UserInfo>>,
     ) -> ConnectResult {
         // Prepare initial send buffer:
@@ -210,13 +329,13 @@ impl UserNetService {
         // (u16): size of the username,
         // (size): username string,
         let ver_str_len = env!("CARGO_PKG_VERSION").len() as u16;
-        let name_str_len = username.len() as u16;
+        let name_str_len = self.user_info.username.len() as u16;
 
         // Convert to buffers.
         let mut ver_str_len_buf = u16::encode::<u16>(&ver_str_len).unwrap();
         let mut ver_str_buf = Vec::from(env!("CARGO_PKG_VERSION").as_bytes());
         let mut name_str_len_buf = u16::encode::<u16>(&name_str_len).unwrap();
-        let mut name_str_buf = Vec::from(username.as_bytes());
+        let mut name_str_buf = Vec::from(self.user_info.username.as_bytes());
 
         // Move all buffers to one big buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
@@ -227,7 +346,7 @@ impl UserNetService {
 
         // Send this buffer.
         loop {
-            match self.write_to_socket_tcp(socket, &mut out_buffer) {
+            match self.write_to_socket_tcp(&mut out_buffer) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -240,7 +359,7 @@ impl UserNetService {
         // Wait for answer.
         let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
         loop {
-            match self.read_from_socket_tcp(socket, &mut in_buf) {
+            match self.read_from_socket_tcp(&mut in_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -257,7 +376,7 @@ impl UserNetService {
             Some(ConnectServerAnswer::WrongVersion) => {
                 // Get correct version string (get size first).
                 loop {
-                    match self.read_from_socket_tcp(socket, &mut in_buf) {
+                    match self.read_from_socket_tcp(&mut in_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                             continue;
@@ -271,7 +390,7 @@ impl UserNetService {
                 // Get correct version string.
                 let mut required_ver_str_buf = vec![0u8; required_ver_str_size as usize];
                 loop {
-                    match self.read_from_socket_tcp(socket, &mut required_ver_str_buf) {
+                    match self.read_from_socket_tcp(&mut required_ver_str_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                             continue;
@@ -306,7 +425,7 @@ impl UserNetService {
         // Read user count.
         let mut users_count_buf = vec![0u8; std::mem::size_of::<u64>()];
         loop {
-            match self.read_from_socket_tcp(socket, &mut users_count_buf) {
+            match self.read_from_socket_tcp(&mut users_count_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -329,7 +448,7 @@ impl UserNetService {
             // Read username len.
             let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
-                match self.read_from_socket_tcp(socket, &mut username_len_buf) {
+                match self.read_from_socket_tcp(&mut username_len_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                         continue;
@@ -350,7 +469,7 @@ impl UserNetService {
             // Read username.
             let mut username_buf = vec![0u8; username_len as usize];
             loop {
-                match self.read_from_socket_tcp(socket, &mut username_buf) {
+                match self.read_from_socket_tcp(&mut username_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                         continue;
@@ -377,13 +496,13 @@ impl UserNetService {
 
         return ConnectResult::Ok;
     }
-    fn read_u16_and_string_from_socket(&self, socket: &mut TcpStream) -> Result<String, IoResult> {
+    fn read_u16_and_string_from_socket_under_mutex(&mut self) -> Result<String, IoResult> {
         // Get len (u16).
         let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
         loop {
-            match self.read_from_socket_tcp(socket, &mut len_buf) {
+            match self.read_from_socket_tcp(&mut len_buf) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS_UNDER_MUTEX));
                     continue;
                 }
                 IoResult::Ok(_) => break,
@@ -410,9 +529,9 @@ impl UserNetService {
 
         let mut string_buf = vec![0u8; len as usize];
         loop {
-            match self.read_from_socket_tcp(socket, &mut string_buf) {
+            match self.read_from_socket_tcp(&mut string_buf) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS_UNDER_MUTEX));
                     continue;
                 }
                 IoResult::Ok(_) => break,

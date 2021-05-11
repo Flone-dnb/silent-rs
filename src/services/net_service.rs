@@ -21,11 +21,15 @@ pub struct ClientConfig {
 }
 
 #[derive(Debug)]
-pub struct NetService {}
+pub struct NetService {
+    user_service: Arc<Mutex<UserTcpService>>,
+}
 
 impl NetService {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            user_service: Arc::new(Mutex::new(UserTcpService::new())),
+        }
     }
 
     pub fn start(
@@ -35,14 +39,44 @@ impl NetService {
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
+        self.user_service = Arc::new(Mutex::new(UserTcpService::new()));
+        let user_service_copy = Arc::clone(&self.user_service);
         thread::spawn(move || {
-            NetService::service(config, username, connect_layout_sender, internal_messages)
+            NetService::service(
+                config,
+                username,
+                user_service_copy,
+                connect_layout_sender,
+                internal_messages,
+            )
         });
+    }
+    pub fn send_user_message(&mut self, message: String) -> Result<(), String> {
+        match self
+            .user_service
+            .lock()
+            .unwrap()
+            .send_user_text_message(message)
+        {
+            HandleMessageResult::Ok => {}
+            HandleMessageResult::IOError(err) => match err {
+                IoResult::Err(msg) => {
+                    return Err(format!("{} at [{}, {}", msg, file!(), line!()));
+                }
+                _ => {}
+            },
+            HandleMessageResult::OtherErr(msg) => {
+                return Err(format!("{} at [{}, {}", msg, file!(), line!()));
+            }
+        }
+
+        Ok(())
     }
 
     fn service(
         config: ClientConfig,
         username: String,
+        user_service: Arc<Mutex<UserTcpService>>,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
@@ -56,7 +90,7 @@ impl NetService {
             return;
         }
 
-        let mut tcp_socket = tcp_socket.unwrap();
+        let tcp_socket = tcp_socket.unwrap();
         if tcp_socket.set_nodelay(true).is_err() {
             connect_layout_sender
                 .send(ConnectResult::OtherErr(String::from(
@@ -74,46 +108,54 @@ impl NetService {
             return;
         }
 
-        let mut user_net_service = UserNetService::new();
-
         let (sender, receiver) = mpsc::channel();
 
-        // Connect.
-        match user_net_service.connect_user(&mut tcp_socket, username, sender) {
-            ConnectResult::Ok => {
-                // Get info about all other users.
-                let mut connected_users = 0usize;
-                loop {
-                    let received = receiver.recv().unwrap();
-                    if received.is_none() {
-                        // End.
-                        break;
-                    } else {
-                        connect_layout_sender
-                            .send(ConnectResult::InfoAboutOtherUser(received.unwrap()))
-                            .unwrap();
-                        connected_users += 1;
-                    }
-                }
-                connect_layout_sender.send(ConnectResult::Ok).unwrap();
+        // Move socket and userinfo to UserNetService.
+        {
+            let mut user_service_guard = user_service.lock().unwrap();
+            user_service_guard.tcp_socket = Some(tcp_socket);
+            user_service_guard.user_info = UserInfo::new(username);
+        }
 
-                // Include myself.
-                connected_users += 1;
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::RefreshConnectedUsersCount(connected_users));
-            }
-            ConnectResult::Err(io_error) => {
-                let mut err = io_error;
-                if let IoResult::Err(msg) = err {
-                    err = IoResult::Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+        // Connect.
+        {
+            let mut user_service_guard = user_service.lock().unwrap();
+            match user_service_guard.connect_user(sender) {
+                ConnectResult::Ok => {
+                    // Get info about all other users.
+                    let mut connected_users = 0usize;
+                    loop {
+                        let received = receiver.recv().unwrap();
+                        if received.is_none() {
+                            // End.
+                            break;
+                        } else {
+                            connect_layout_sender
+                                .send(ConnectResult::InfoAboutOtherUser(received.unwrap()))
+                                .unwrap();
+                            connected_users += 1;
+                        }
+                    }
+                    connect_layout_sender.send(ConnectResult::Ok).unwrap();
+
+                    // Include myself.
+                    connected_users += 1;
+                    internal_messages
+                        .lock()
+                        .unwrap()
+                        .push(InternalMessage::RefreshConnectedUsersCount(connected_users));
                 }
-                connect_layout_sender.send(ConnectResult::Err(err)).unwrap();
-            }
-            res => {
-                connect_layout_sender.send(res).unwrap();
-                return;
+                ConnectResult::Err(io_error) => {
+                    let mut err = io_error;
+                    if let IoResult::Err(msg) = err {
+                        err = IoResult::Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+                    }
+                    connect_layout_sender.send(ConnectResult::Err(err)).unwrap();
+                }
+                res => {
+                    connect_layout_sender.send(res).unwrap();
+                    return;
+                }
             }
         }
 
@@ -122,27 +164,30 @@ impl NetService {
             let mut fin = false;
             let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
-                match user_net_service.read_from_socket_tcp(&mut tcp_socket, &mut in_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => {}
-                    IoResult::FIN => {
-                        fin = true;
-                        break;
-                    }
-                    IoResult::Err(msg) => {
-                        internal_messages
-                            .lock()
-                            .unwrap()
-                            .push(InternalMessage::SystemIOError(format!(
+                {
+                    let mut user_service_guard = user_service.lock().unwrap();
+                    match user_service_guard.read_from_socket_tcp(&mut in_buf) {
+                        IoResult::WouldBlock => {
+                            drop(user_service_guard);
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                            continue;
+                        }
+                        IoResult::Ok(_) => {}
+                        IoResult::FIN => {
+                            fin = true;
+                            break;
+                        }
+                        IoResult::Err(msg) => {
+                            let mut internal_messages_guard = internal_messages.lock().unwrap();
+                            internal_messages_guard.push(InternalMessage::SystemIOError(format!(
                                 "{} at [{}, {}]",
                                 msg,
                                 file!(),
                                 line!()
                             )));
-                        return;
+                            internal_messages_guard.push(InternalMessage::ClearAllUsers);
+                            return;
+                        }
                     }
                 }
 
@@ -181,44 +226,42 @@ impl NetService {
                 }
 
                 // Handle message.
-                match user_net_service.handle_message(
-                    _message_id,
-                    &mut tcp_socket,
-                    &internal_messages,
-                ) {
-                    HandleMessageResult::Ok => {}
-                    HandleMessageResult::IOError(err) => match err {
-                        IoResult::FIN => {
-                            fin = true;
-                            break;
-                        }
-                        IoResult::Err(msg) => {
+                {
+                    let mut user_service_guard = user_service.lock().unwrap();
+                    match user_service_guard.handle_tcp_message(_message_id, &internal_messages) {
+                        HandleMessageResult::Ok => {}
+                        HandleMessageResult::IOError(err) => match err {
+                            IoResult::FIN => {
+                                fin = true;
+                                break;
+                            }
+                            IoResult::Err(msg) => {
+                                fin = true;
+                                internal_messages.lock().unwrap().push(
+                                    InternalMessage::SystemIOError(format!(
+                                        "{} at [{}, {}",
+                                        msg,
+                                        file!(),
+                                        line!()
+                                    )),
+                                );
+                                break;
+                            }
+                            _ => {}
+                        },
+                        HandleMessageResult::OtherErr(msg) => {
                             fin = true;
                             internal_messages
                                 .lock()
                                 .unwrap()
                                 .push(InternalMessage::SystemIOError(format!(
-                                    "{} at [{}, {}",
+                                    "{} at [{}, {}]",
                                     msg,
                                     file!(),
                                     line!()
                                 )));
                             break;
                         }
-                        _ => {}
-                    },
-                    HandleMessageResult::OtherErr(msg) => {
-                        fin = true;
-                        internal_messages
-                            .lock()
-                            .unwrap()
-                            .push(InternalMessage::SystemIOError(format!(
-                                "{} at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )));
-                        break;
                     }
                 }
             }

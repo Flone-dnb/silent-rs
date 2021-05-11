@@ -24,6 +24,9 @@ pub struct MainLayout {
 }
 
 impl MainLayout {
+    pub fn get_message_input(&self) -> String {
+        self.message_string.clone()
+    }
     pub fn add_user(&mut self, username: String, dont_show_notice: bool) {
         self.users_list.add_user(username.clone());
         self.connected_users = self.users_list.get_user_count();
@@ -93,6 +96,7 @@ impl MainLayout {
                             &self.message_string,
                             MainMessage::MessageInputChanged,
                         )
+                        .on_submit(MainMessage::MessageInputEnterPressed)
                         .size(22)
                         .style(current_style.theme),
                     )
