@@ -1,5 +1,5 @@
 // External.
-use bytevec::{ByteDecodable, ByteEncodable};
+use bytevec::ByteDecodable;
 use num_traits::FromPrimitive;
 
 // Std.
@@ -10,7 +10,7 @@ use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
-use crate::services::user_net_service::*;
+use crate::services::user_tcp_service::*;
 use crate::InternalMessage;
 
 pub struct ClientConfig {
@@ -61,12 +61,12 @@ impl NetService {
             HandleMessageResult::Ok => {}
             HandleMessageResult::IOError(err) => match err {
                 IoResult::Err(msg) => {
-                    return Err(format!("{} at [{}, {}", msg, file!(), line!()));
+                    return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
                 }
                 _ => {}
             },
             HandleMessageResult::OtherErr(msg) => {
-                return Err(format!("{} at [{}, {}", msg, file!(), line!()));
+                return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
             }
         }
 
@@ -161,20 +161,20 @@ impl NetService {
 
         // Read messages from server.
         loop {
-            let mut fin = false;
+            let mut _fin = false;
             let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
                 {
                     let mut user_service_guard = user_service.lock().unwrap();
-                    match user_service_guard.read_from_socket_tcp(&mut in_buf) {
+                    match user_service_guard.read_from_socket(&mut in_buf) {
                         IoResult::WouldBlock => {
                             drop(user_service_guard);
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_IDLE_MS));
                             continue;
                         }
                         IoResult::Ok(_) => {}
                         IoResult::FIN => {
-                            fin = true;
+                            _fin = true;
                             break;
                         }
                         IoResult::Err(msg) => {
@@ -203,40 +203,33 @@ impl NetService {
                     )));
                     return;
                 }
-                let message = message.unwrap();
-                let mut _message_id: ServerMessage = ServerMessage::UserConnected;
-                match FromPrimitive::from_u16(message as u16) {
-                    Some(ServerMessage::UserConnected) => {
-                        _message_id = ServerMessage::UserConnected;
-                    }
-                    Some(ServerMessage::UserDisconnected) => {
-                        _message_id = ServerMessage::UserDisconnected;
-                    }
-                    None => {
-                        fin = true;
-                        internal_messages
+                let message = message.unwrap() as u16;
+                let message_id = ServerMessage::from_u16(message);
+                if message_id.is_none() {
+                    _fin = true;
+                    internal_messages
                         .lock()
                         .unwrap()
                         .push(InternalMessage::SystemIOError(format!(
                         "FromPrimitive::from_u16() failed on 'in_buf' (value: {}) at [{}, {}].\nClosing connection...",
                         message, file!(), line!()
                     )));
-                        break;
-                    }
+                    break;
                 }
+                let message_id = message_id.unwrap();
 
                 // Handle message.
                 {
                     let mut user_service_guard = user_service.lock().unwrap();
-                    match user_service_guard.handle_tcp_message(_message_id, &internal_messages) {
+                    match user_service_guard.handle_message(message_id, &internal_messages) {
                         HandleMessageResult::Ok => {}
                         HandleMessageResult::IOError(err) => match err {
                             IoResult::FIN => {
-                                fin = true;
+                                _fin = true;
                                 break;
                             }
                             IoResult::Err(msg) => {
-                                fin = true;
+                                _fin = true;
                                 internal_messages.lock().unwrap().push(
                                     InternalMessage::SystemIOError(format!(
                                         "{} at [{}, {}",
@@ -250,7 +243,7 @@ impl NetService {
                             _ => {}
                         },
                         HandleMessageResult::OtherErr(msg) => {
-                            fin = true;
+                            _fin = true;
                             internal_messages
                                 .lock()
                                 .unwrap()
@@ -266,7 +259,7 @@ impl NetService {
                 }
             }
 
-            if fin {
+            if _fin {
                 break;
             }
         }

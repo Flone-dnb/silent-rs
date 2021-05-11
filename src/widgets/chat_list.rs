@@ -145,18 +145,18 @@ impl ChatMessage {
         }
     }
     pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
-        let mut author: &str = &self.author;
+        let mut _author: &str = &self.author;
 
         match self.message_type {
-            MessageType::UserMessage => author = &self.author,
-            MessageType::SystemMessage => author = "SYSTEM",
-            MessageType::InfoMessage => author = "INFO",
+            MessageType::UserMessage => _author = &self.author,
+            MessageType::SystemMessage => _author = "SYSTEM",
+            MessageType::InfoMessage => _author = "INFO",
         }
 
         let mut content = Column::new().padding(10).push(
             Row::new()
                 .push(
-                    Text::new(author)
+                    Text::new(_author)
                         .color(current_style.get_message_author_color())
                         .size(23)
                         .horizontal_alignment(HorizontalAlignment::Left)

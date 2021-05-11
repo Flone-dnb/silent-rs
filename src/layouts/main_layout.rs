@@ -27,6 +27,9 @@ impl MainLayout {
     pub fn get_message_input(&self) -> String {
         self.message_string.clone()
     }
+    pub fn clear_message_input(&mut self) {
+        self.message_string.clear();
+    }
     pub fn add_user(&mut self, username: String, dont_show_notice: bool) {
         self.users_list.add_user(username.clone());
         self.connected_users = self.users_list.get_user_count();

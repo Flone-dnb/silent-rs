@@ -19,7 +19,7 @@ use layouts::connect_layout::*;
 use layouts::main_layout::*;
 use layouts::settings_layout::*;
 use services::net_service::*;
-use services::user_net_service::ConnectResult;
+use services::user_tcp_service::ConnectResult;
 use themes::StyleTheme;
 use themes::Theme;
 
@@ -74,7 +74,7 @@ struct Silent {
 pub enum InternalMessage {
     InitUserConfig,
     SystemIOError(String),
-    UserMessage(String, String),
+    UserMessage { username: String, message: String },
     RefreshConnectedUsersCount(usize),
     ClearAllUsers,
     UserConnected(String),
@@ -164,8 +164,9 @@ impl Application for Silent {
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
                         }
-                        InternalMessage::UserMessage(msg, author) => {
-                            self.main_layout.add_message(msg.clone(), author.clone());
+                        InternalMessage::UserMessage { username, message } => {
+                            self.main_layout
+                                .add_message(message.clone(), username.clone());
                         }
                         InternalMessage::RefreshConnectedUsersCount(count) => {
                             self.main_layout.connected_users = *count;
@@ -196,6 +197,7 @@ impl Application for Silent {
                     if let Err(msg) = self.net_service.send_user_message(message) {
                         self.main_layout.add_system_message(msg);
                     }
+                    self.main_layout.clear_message_input();
                 }
             }
             MainMessage::UsernameInputChanged(text) => {

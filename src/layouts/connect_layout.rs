@@ -7,7 +7,7 @@ use iced::{
 use crate::global_params::*;
 use crate::services::config_service::*;
 use crate::services::net_service::ClientConfig;
-use crate::services::user_net_service::{ConnectResult, IoResult};
+use crate::services::user_tcp_service::{ConnectResult, IoResult};
 use crate::themes::*;
 use crate::MainMessage;
 

@@ -33,6 +33,7 @@ enum ConnectServerAnswer {
 pub enum ServerMessage {
     UserConnected = 0,
     UserDisconnected = 1,
+    UserMessage = 2,
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
@@ -84,7 +85,7 @@ pub struct UserTcpService {
 
 impl UserTcpService {
     pub fn new() -> Self {
-            UserTcpService {
+        UserTcpService {
             user_state: UserState::NotConnected,
             tcp_socket: None,
             user_info: UserInfo {
@@ -173,9 +174,9 @@ impl UserTcpService {
 
         // Send to server.
         loop {
-            match self.write_to_socket_tcp(&mut out_buffer) {
+            match self.write_to_socket(&mut out_buffer) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS_UNDER_MUTEX));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
                 IoResult::Ok(_bytes) => break,
@@ -185,7 +186,13 @@ impl UserTcpService {
 
         HandleMessageResult::Ok
     }
-    pub fn read_from_socket_tcp(&mut self, buf: &mut [u8]) -> IoResult {
+    pub fn read_from_socket(&mut self, buf: &mut [u8]) -> IoResult {
+        if buf.len() == 0 {
+            return IoResult::Err(format!(
+                "An error occurred at UserTcpService::read_from_socket(), error: passed 'buf' has 0 len at [{}, {}]", file!(), line!()
+            ));
+        }
+
         if self.tcp_socket.is_none() {
             return IoResult::Err(format!(
                 "UserNetService::read_from_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
@@ -224,7 +231,7 @@ impl UserTcpService {
             }
         };
     }
-    pub fn write_to_socket_tcp(&mut self, buf: &mut [u8]) -> IoResult {
+    pub fn write_to_socket(&mut self, buf: &mut [u8]) -> IoResult {
         if self.tcp_socket.is_none() {
             return IoResult::Err(format!(
                 "UserNetService::write_to_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
@@ -263,39 +270,45 @@ impl UserTcpService {
             }
         };
     }
-    pub fn handle_tcp_message(
+    pub fn handle_message(
         &mut self,
         message: ServerMessage,
         internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
     ) -> HandleMessageResult {
+        let mut username = String::new();
+        match self.read_u16_and_string_from_socket() {
+            Ok(name) => username = name,
+            Err(io_e) => match io_e {
+                IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return HandleMessageResult::IOError(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )))
+                }
+                _ => {}
+            },
+        }
+
         match message {
             ServerMessage::UserConnected => {
-                let mut username = String::new();
-                match self.read_u16_and_string_from_socket_under_mutex() {
-                    Ok(name) => username = name,
-                    Err(io_e) => match io_e {
-                        IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
-                        IoResult::Err(msg) => {
-                            return HandleMessageResult::IOError(IoResult::Err(format!(
-                                "{} at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )))
-                        }
-                        _ => {}
-                    },
-                }
-
                 internal_messages_ok_only
                     .lock()
                     .unwrap()
                     .push(InternalMessage::UserConnected(username));
             }
             ServerMessage::UserDisconnected => {
-                let mut username = String::new();
-                match self.read_u16_and_string_from_socket_under_mutex() {
-                    Ok(name) => username = name,
+                internal_messages_ok_only
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::UserDisconnected(username));
+            }
+            ServerMessage::UserMessage => {
+                let mut message = String::new();
+                match self.read_u16_and_string_from_socket() {
+                    Ok(name) => message = name,
                     Err(io_e) => match io_e {
                         IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
                         IoResult::Err(msg) => {
@@ -313,7 +326,7 @@ impl UserTcpService {
                 internal_messages_ok_only
                     .lock()
                     .unwrap()
-                    .push(InternalMessage::UserDisconnected(username));
+                    .push(InternalMessage::UserMessage { username, message });
             }
         }
 
@@ -346,7 +359,7 @@ impl UserTcpService {
 
         // Send this buffer.
         loop {
-            match self.write_to_socket_tcp(&mut out_buffer) {
+            match self.write_to_socket(&mut out_buffer) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -359,7 +372,7 @@ impl UserTcpService {
         // Wait for answer.
         let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
         loop {
-            match self.read_from_socket_tcp(&mut in_buf) {
+            match self.read_from_socket(&mut in_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -376,7 +389,7 @@ impl UserTcpService {
             Some(ConnectServerAnswer::WrongVersion) => {
                 // Get correct version string (get size first).
                 loop {
-                    match self.read_from_socket_tcp(&mut in_buf) {
+                    match self.read_from_socket(&mut in_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                             continue;
@@ -390,7 +403,7 @@ impl UserTcpService {
                 // Get correct version string.
                 let mut required_ver_str_buf = vec![0u8; required_ver_str_size as usize];
                 loop {
-                    match self.read_from_socket_tcp(&mut required_ver_str_buf) {
+                    match self.read_from_socket(&mut required_ver_str_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                             continue;
@@ -425,7 +438,7 @@ impl UserTcpService {
         // Read user count.
         let mut users_count_buf = vec![0u8; std::mem::size_of::<u64>()];
         loop {
-            match self.read_from_socket_tcp(&mut users_count_buf) {
+            match self.read_from_socket(&mut users_count_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                     continue;
@@ -448,7 +461,7 @@ impl UserTcpService {
             // Read username len.
             let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
-                match self.read_from_socket_tcp(&mut username_len_buf) {
+                match self.read_from_socket(&mut username_len_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                         continue;
@@ -469,7 +482,7 @@ impl UserTcpService {
             // Read username.
             let mut username_buf = vec![0u8; username_len as usize];
             loop {
-                match self.read_from_socket_tcp(&mut username_buf) {
+                match self.read_from_socket(&mut username_buf) {
                     IoResult::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
                         continue;
@@ -496,13 +509,13 @@ impl UserTcpService {
 
         return ConnectResult::Ok;
     }
-    fn read_u16_and_string_from_socket_under_mutex(&mut self) -> Result<String, IoResult> {
+    fn read_u16_and_string_from_socket(&mut self) -> Result<String, IoResult> {
         // Get len (u16).
         let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
         loop {
-            match self.read_from_socket_tcp(&mut len_buf) {
+            match self.read_from_socket(&mut len_buf) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS_UNDER_MUTEX));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
                 IoResult::Ok(_) => break,
@@ -529,9 +542,9 @@ impl UserTcpService {
 
         let mut string_buf = vec![0u8; len as usize];
         loop {
-            match self.read_from_socket_tcp(&mut string_buf) {
+            match self.read_from_socket(&mut string_buf) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS_UNDER_MUTEX));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
                 IoResult::Ok(_) => break,
