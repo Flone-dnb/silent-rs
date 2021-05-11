@@ -72,18 +72,17 @@ impl ChatList {
         }
     }
     pub fn add_message(&mut self, message: String, author: String) {
-        let mut same_author = false;
+        let mut add_message = true;
 
         if let Some(last_message) = self.messages.back_mut() {
-            if last_message.author == author {
+            if last_message.author == author && last_message.time == ChatMessage::current_time() {
                 last_message.message.push('\n');
                 last_message.message.push_str(&message);
-
-                same_author = true;
+                add_message = false;
             }
         }
 
-        if !same_author {
+        if add_message {
             self.messages
                 .push_back(ChatMessage::new(message, author, MessageType::UserMessage));
 
@@ -105,11 +104,26 @@ pub enum MessageType {
 pub struct ChatMessage {
     message: String,
     author: String,
-    time: String,
+    pub time: String,
     message_type: MessageType,
 }
 
 impl ChatMessage {
+    pub fn current_time() -> String {
+        let now = Local::now();
+        let mut hour: String = now.hour().to_string();
+        let mut minute: String = now.minute().to_string();
+
+        if hour.len() == 1 {
+            hour = String::from("0") + &hour;
+        }
+
+        if minute.len() == 1 {
+            minute = String::from("0") + &minute;
+        }
+
+        format!("{}:{}", hour, minute)
+    }
     pub fn new(message: String, author: String, message_type: MessageType) -> Self {
         let now = Local::now();
         let mut hour: String = now.hour().to_string();
