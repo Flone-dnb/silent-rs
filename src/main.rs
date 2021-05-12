@@ -1,8 +1,9 @@
 // External.
 use iced::{
-    executor, time, window::icon::Icon, Application, Clipboard, Color, Command, Element, Settings,
-    Subscription,
+    executor, keyboard, time, window::icon::Icon, Application, Clipboard, Color, Command, Element,
+    Settings, Subscription,
 };
+use iced_native::Event;
 
 // Std.
 use std::fs::File;
@@ -46,7 +47,7 @@ fn read_icon_png(path: String) -> Vec<u8> {
     buf
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum WindowLayout {
     ConnectWindow,
     MainWindow,
@@ -95,6 +96,7 @@ pub enum MainMessage {
     AboutSettingsButtonPressed,
     GithubButtonPressed,
     FromSettingsButtonPressed,
+    TabPressed,
     Tick(()),
 }
 
@@ -133,11 +135,25 @@ impl Application for Silent {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
+        // look for input
+        let key_event = iced_native::subscription::events_with(|event, _status| match event {
+            Event::Keyboard(keyboard_event) => match keyboard_event {
+                keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::Tab,
+                    modifiers,
+                } => Some(MainMessage::TabPressed),
+                _ => None,
+            },
+            _ => None,
+        });
+
         // look for new internal messages one time per second
-        time::every(std::time::Duration::from_millis(
+        let tick_event = time::every(std::time::Duration::from_millis(
             INTERVAL_INTERNAL_MESSAGE_MS,
         ))
-        .map(|_| MainMessage::Tick(()))
+        .map(|_| MainMessage::Tick(()));
+
+        Subscription::batch(vec![key_event, tick_event])
     }
 
     fn update(
@@ -185,6 +201,11 @@ impl Application for Silent {
                     }
                 }
                 guard.clear();
+            }
+            MainMessage::TabPressed => {
+                if self.current_window_layout == WindowLayout::ConnectWindow {
+                    self.connect_layout.focus_on_next_item();
+                }
             }
             MainMessage::MessageInputChanged(text) => {
                 if text.chars().count() <= MAX_MESSAGE_SIZE {

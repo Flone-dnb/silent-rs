@@ -51,6 +51,21 @@ impl Default for ConnectLayout {
 }
 
 impl ConnectLayout {
+    pub fn focus_on_next_item(&mut self) {
+        if self.username_input.is_focused() {
+            self.username_input.unfocus();
+            self.servername_input.focus();
+        } else if self.servername_input.is_focused() {
+            self.servername_input.unfocus();
+            self.port_input.focus();
+        } else if self.port_input.is_focused() {
+            self.port_input.unfocus();
+            self.password_input.focus();
+        } else if self.password_input.is_focused() {
+            self.password_input.unfocus();
+            self.username_input.focus();
+        }
+    }
     pub fn read_user_config(&mut self) -> Result<(), String> {
         let config = UserConfig::new();
         if let Err(msg) = config {
