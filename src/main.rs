@@ -27,7 +27,7 @@ fn main() -> iced::Result {
     let mut config = Settings::default();
     config.antialiasing = false;
     config.window.size = (1100, 600);
-    config.window.min_size = Some((1100, 600));
+    config.window.min_size = Some((900, 600));
     config.default_font = Some(include_bytes!("../res/mplus-2p-light.ttf"));
 
     let icon = Icon::from_rgba(read_icon_png(String::from("res/app_icon.png")), 256, 256).unwrap();
