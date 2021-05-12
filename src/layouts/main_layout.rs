@@ -10,10 +10,17 @@ use crate::widgets::chat_list::*;
 use crate::widgets::users_list::*;
 use crate::MainMessage;
 
+#[derive(Debug, Clone)]
+pub enum MainLayoutMessage {
+    MessageInputEnterPressed,
+    HideUserInfoPressed,
+    UserItemPressed(usize),
+}
+
 #[derive(Debug, Default)]
 pub struct MainLayout {
     pub chat_list: ChatList,
-    users_list: UsersList,
+    users_list: UserList,
 
     pub connected_users: usize,
 
@@ -24,6 +31,12 @@ pub struct MainLayout {
 }
 
 impl MainLayout {
+    pub fn open_selected_user_info(&mut self, id: usize) {
+        self.users_list.open_selected_user_info(id);
+    }
+    pub fn hide_user_info(&mut self) {
+        self.users_list.hide_user_info();
+    }
     pub fn get_message_input(&self) -> String {
         self.message_string.clone()
     }
@@ -99,7 +112,9 @@ impl MainLayout {
                             &self.message_string,
                             MainMessage::MessageInputChanged,
                         )
-                        .on_submit(MainMessage::MessageInputEnterPressed)
+                        .on_submit(MainMessage::MessageFromMainLayout(
+                            MainLayoutMessage::MessageInputEnterPressed,
+                        ))
                         .size(22)
                         .style(current_style.theme),
                     )

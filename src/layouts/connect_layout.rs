@@ -11,6 +11,12 @@ use crate::services::user_tcp_service::{ConnectResult, IoResult};
 use crate::themes::*;
 use crate::MainMessage;
 
+#[derive(Debug, Clone)]
+pub enum ConnectLayoutMessage {
+    ConnectButtonPressed,
+    TabPressed,
+}
+
 #[derive(Debug)]
 pub struct ConnectLayout {
     pub username_string: String,
@@ -186,7 +192,9 @@ impl ConnectLayout {
                             &mut self.connect_button,
                             Text::new("Connect").color(Color::WHITE),
                         )
-                        .on_press(MainMessage::ConnectButtonPressed)
+                        .on_press(MainMessage::MessageFromConnectLayout(
+                            ConnectLayoutMessage::ConnectButtonPressed,
+                        ))
                         .width(Length::FillPortion(20))
                         .height(Length::Shrink)
                         .style(current_style.theme),

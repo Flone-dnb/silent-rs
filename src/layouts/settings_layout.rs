@@ -5,6 +5,14 @@ use iced::{button, Button, Color, Column, Container, Element, Length, Row, Text}
 use crate::themes::*;
 use crate::MainMessage;
 
+#[derive(Debug, Clone)]
+pub enum SettingsLayoutMessage {
+    GeneralSettingsButtonPressed,
+    AboutSettingsButtonPressed,
+    GithubButtonPressed,
+    FromSettingsButtonPressed,
+}
+
 #[derive(Debug, Default)]
 pub struct SettingsLayout {
     active_option: CurrentActiveOption,
@@ -44,7 +52,9 @@ impl SettingsLayout {
             &mut self.general_button,
             Text::new("General").color(Color::WHITE),
         )
-        .on_press(MainMessage::GeneralSettingsButtonPressed)
+        .on_press(MainMessage::MessageFromSettingsLayout(
+            SettingsLayoutMessage::GeneralSettingsButtonPressed,
+        ))
         .width(Length::Fill)
         .height(Length::FillPortion(8));
 
@@ -52,7 +62,9 @@ impl SettingsLayout {
             &mut self.about_button,
             Text::new("About").color(Color::WHITE),
         )
-        .on_press(MainMessage::AboutSettingsButtonPressed)
+        .on_press(MainMessage::MessageFromSettingsLayout(
+            SettingsLayoutMessage::AboutSettingsButtonPressed,
+        ))
         .width(Length::Fill)
         .height(Length::FillPortion(8));
 
@@ -85,7 +97,7 @@ impl SettingsLayout {
                                 &mut self.about_details.github_button,
                                 Text::new("source code").color(Color::WHITE).size(25),
                             )
-                            .on_press(MainMessage::GithubButtonPressed)
+                            .on_press(MainMessage::MessageFromSettingsLayout(SettingsLayoutMessage::GithubButtonPressed))
                             .style(current_style.theme)
                         )
                     );
@@ -109,7 +121,9 @@ impl SettingsLayout {
                                 &mut self.back_button,
                                 Text::new("Return").color(Color::WHITE),
                             )
-                            .on_press(MainMessage::FromSettingsButtonPressed)
+                            .on_press(MainMessage::MessageFromSettingsLayout(
+                                SettingsLayoutMessage::FromSettingsButtonPressed,
+                            ))
                             .width(Length::Fill)
                             .height(Length::FillPortion(8))
                             .style(current_style.theme),

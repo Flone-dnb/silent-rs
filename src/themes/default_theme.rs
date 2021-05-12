@@ -5,9 +5,9 @@ use iced::{
 
 const SURFACE: Color = Color::from_rgb(30_f32 / 255.0, 30_f32 / 255.0, 30_f32 / 255.0);
 
-const ACTIVE: Color = Color::from_rgb(75_f32 / 255.0, 0_f32 / 255.0, 0_f32 / 255.0);
+const ACTIVE: Color = Color::from_rgb(65_f32 / 255.0, 0_f32 / 255.0, 0_f32 / 255.0);
 
-const HOVERED: Color = Color::from_rgb(95_f32 / 255.0, 0_f32 / 255.0, 0_f32 / 255.0);
+const HOVERED: Color = Color::from_rgb(80_f32 / 255.0, 0_f32 / 255.0, 0_f32 / 255.0);
 
 pub const MESSAGE_AUTHOR_COLOR: Color =
     Color::from_rgb(170_f32 / 255.0, 30_f32 / 255.0, 30_f32 / 255.0);
@@ -149,6 +149,38 @@ impl button::StyleSheet for GrayButton {
             text_color: Color::WHITE,
             border_width: 1.0,
             border_color: Color::WHITE,
+            ..self.active()
+        }
+    }
+
+    fn pressed(&self) -> button::Style {
+        button::Style {
+            border_width: 0.0,
+            ..self.hovered()
+        }
+    }
+}
+
+// ---------------------------------------------------------------
+
+pub struct InteractiveTextButton;
+
+impl button::StyleSheet for InteractiveTextButton {
+    fn active(&self) -> button::Style {
+        button::Style {
+            background: Color::TRANSPARENT.into(),
+            border_radius: BORDER_RADIUS,
+            text_color: Color::WHITE,
+            ..button::Style::default()
+        }
+    }
+
+    fn hovered(&self) -> button::Style {
+        button::Style {
+            background: HOVERED.into(),
+            text_color: Color::WHITE,
+            border_width: 1.0,
+            border_color: Color::TRANSPARENT,
             ..self.active()
         }
     }

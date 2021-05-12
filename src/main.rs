@@ -84,19 +84,15 @@ pub enum InternalMessage {
 
 #[derive(Debug, Clone)]
 pub enum MainMessage {
+    MessageFromMainLayout(MainLayoutMessage),
+    MessageFromSettingsLayout(SettingsLayoutMessage),
+    MessageFromConnectLayout(ConnectLayoutMessage),
     MessageInputChanged(String),
-    MessageInputEnterPressed,
     UsernameInputChanged(String),
     ServernameInputChanged(String),
     PortInputChanged(String),
     PasswordInputChanged(String),
-    ConnectButtonPressed,
     ToSettingsButtonPressed,
-    GeneralSettingsButtonPressed,
-    AboutSettingsButtonPressed,
-    GithubButtonPressed,
-    FromSettingsButtonPressed,
-    TabPressed,
     Tick(()),
 }
 
@@ -141,7 +137,9 @@ impl Application for Silent {
                 keyboard::Event::KeyPressed {
                     key_code: keyboard::KeyCode::Tab,
                     modifiers,
-                } => Some(MainMessage::TabPressed),
+                } => Some(MainMessage::MessageFromConnectLayout(
+                    ConnectLayoutMessage::TabPressed,
+                )),
                 _ => None,
             },
             _ => None,
@@ -202,23 +200,29 @@ impl Application for Silent {
                 }
                 guard.clear();
             }
-            MainMessage::TabPressed => {
-                if self.current_window_layout == WindowLayout::ConnectWindow {
-                    self.connect_layout.focus_on_next_item();
+            MainMessage::MessageFromMainLayout(message) => match message {
+                MainLayoutMessage::UserItemPressed(id) => {
+                    self.main_layout.open_selected_user_info(id);
                 }
+                MainLayoutMessage::HideUserInfoPressed => {
+                    self.main_layout.hide_user_info();
+                }
+                MainLayoutMessage::MessageInputEnterPressed => {
+                    let message = self.main_layout.get_message_input();
+                    if !message.is_empty() {
+                        if let Err(msg) = self.net_service.send_user_message(message) {
+                            self.main_layout.add_system_message(msg);
+                        }
+                        self.main_layout.clear_message_input();
+                    }
+                }
+            },
+            MainMessage::ToSettingsButtonPressed => {
+                self.current_window_layout = WindowLayout::SettingsWindow
             }
             MainMessage::MessageInputChanged(text) => {
                 if text.chars().count() <= MAX_MESSAGE_SIZE {
                     self.main_layout.message_string = text
-                }
-            }
-            MainMessage::MessageInputEnterPressed => {
-                let message = self.main_layout.get_message_input();
-                if !message.is_empty() {
-                    if let Err(msg) = self.net_service.send_user_message(message) {
-                        self.main_layout.add_system_message(msg);
-                    }
-                    self.main_layout.clear_message_input();
                 }
             }
             MainMessage::UsernameInputChanged(text) => {
@@ -237,69 +241,77 @@ impl Application for Silent {
             MainMessage::PasswordInputChanged(text) => {
                 self.connect_layout.password_string = text;
             }
-            MainMessage::ConnectButtonPressed => {
-                if let Ok(config) = self.connect_layout.is_data_filled() {
-                    let (tx, rx) = mpsc::channel();
+            MainMessage::MessageFromConnectLayout(message) => match message {
+                ConnectLayoutMessage::TabPressed => {
+                    if self.current_window_layout == WindowLayout::ConnectWindow {
+                        self.connect_layout.focus_on_next_item();
+                    }
+                }
+                ConnectLayoutMessage::ConnectButtonPressed => {
+                    if let Ok(config) = self.connect_layout.is_data_filled() {
+                        let (tx, rx) = mpsc::channel();
 
-                    self.net_service.start(
-                        config,
-                        self.connect_layout.username_string.clone(),
-                        tx,
-                        Arc::clone(&self.internal_messages),
-                    );
+                        self.net_service.start(
+                            config,
+                            self.connect_layout.username_string.clone(),
+                            tx,
+                            Arc::clone(&self.internal_messages),
+                        );
 
-                    loop {
-                        let received = rx.recv().unwrap();
+                        loop {
+                            let received = rx.recv().unwrap();
 
-                        match received {
-                            ConnectResult::Ok => {
-                                self.connect_layout.set_connect_result(ConnectResult::Ok);
-                                self.main_layout
-                                    .add_user(self.connect_layout.username_string.clone(), true);
-                                self.current_window_layout = WindowLayout::MainWindow;
-                                self.is_connected = true;
+                            match received {
+                                ConnectResult::Ok => {
+                                    self.connect_layout.set_connect_result(ConnectResult::Ok);
+                                    self.main_layout.add_user(
+                                        self.connect_layout.username_string.clone(),
+                                        true,
+                                    );
+                                    self.current_window_layout = WindowLayout::MainWindow;
+                                    self.is_connected = true;
 
-                                // Save config.
-                                if let Err(msg) = self.connect_layout.save_user_config() {
-                                    self.main_layout.add_system_message(format!(
-                                        "{} at [{}, {}]",
-                                        msg,
-                                        file!(),
-                                        line!()
-                                    ));
+                                    // Save config.
+                                    if let Err(msg) = self.connect_layout.save_user_config() {
+                                        self.main_layout.add_system_message(format!(
+                                            "{} at [{}, {}]",
+                                            msg,
+                                            file!(),
+                                            line!()
+                                        ));
+                                    }
+                                    break;
                                 }
-                                break;
-                            }
-                            ConnectResult::InfoAboutOtherUser(user_info) => {
-                                self.main_layout.add_user(user_info.username, true);
-                            }
-                            _ => {
-                                self.connect_layout.set_connect_result(received);
-                                break;
+                                ConnectResult::InfoAboutOtherUser(user_info) => {
+                                    self.main_layout.add_user(user_info.username, true);
+                                }
+                                _ => {
+                                    self.connect_layout.set_connect_result(received);
+                                    break;
+                                }
                             }
                         }
                     }
                 }
-            }
-            MainMessage::ToSettingsButtonPressed => {
-                self.current_window_layout = WindowLayout::SettingsWindow
-            }
-            MainMessage::GeneralSettingsButtonPressed => self
-                .settings_layout
-                .set_active_option(CurrentActiveOption::General),
-            MainMessage::AboutSettingsButtonPressed => self
-                .settings_layout
-                .set_active_option(CurrentActiveOption::About),
-            MainMessage::FromSettingsButtonPressed => {
-                if self.is_connected {
-                    self.current_window_layout = WindowLayout::MainWindow
-                } else {
-                    self.current_window_layout = WindowLayout::ConnectWindow
+            },
+            MainMessage::MessageFromSettingsLayout(message) => match message {
+                SettingsLayoutMessage::GeneralSettingsButtonPressed => self
+                    .settings_layout
+                    .set_active_option(CurrentActiveOption::General),
+                SettingsLayoutMessage::AboutSettingsButtonPressed => self
+                    .settings_layout
+                    .set_active_option(CurrentActiveOption::About),
+                SettingsLayoutMessage::FromSettingsButtonPressed => {
+                    if self.is_connected {
+                        self.current_window_layout = WindowLayout::MainWindow
+                    } else {
+                        self.current_window_layout = WindowLayout::ConnectWindow
+                    }
                 }
-            }
-            MainMessage::GithubButtonPressed => {
-                opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
-            }
+                SettingsLayoutMessage::GithubButtonPressed => {
+                    opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
+                }
+            },
         }
 
         Command::none()
