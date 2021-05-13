@@ -2,6 +2,7 @@ pub const CLIENT_CONFIG_FILE_NAME: &str = "silent.config";
 pub const CONFIG_FILE_MAGIC_NUMBER: u16 = 51338;
 pub const CONFIG_FILE_VERSION: u64 = 0;
 
+// these should be in sync with the server global params
 pub const MAX_MESSAGE_SIZE: usize = 500;
 pub const MAX_USERNAME_SIZE: usize = 25;
 pub const MAX_MESSAGES_ON_SCREEN: usize = 100;
