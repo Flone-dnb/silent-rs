@@ -1,4 +1,5 @@
 // External.
+use chrono::prelude::*;
 use iced::{
     button, scrollable, Button, Color, Container, HorizontalAlignment, Length, Row, Scrollable,
     Text,
@@ -105,10 +106,11 @@ impl UserList {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct UserItemData {
     pub username: String,
     pub ping_in_ms: i32,
+    pub connected_time_point: DateTime<Local>,
 }
 
 impl Clone for UserItemData {
@@ -116,6 +118,7 @@ impl Clone for UserItemData {
         UserItemData {
             username: self.username.clone(),
             ping_in_ms: self.ping_in_ms,
+            connected_time_point: self.connected_time_point.clone(),
         }
     }
 }
@@ -125,11 +128,12 @@ impl UserItemData {
         UserItemData {
             username: String::from(""),
             ping_in_ms: 0,
+            connected_time_point: Local::now(),
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct UserItem {
     user_data: UserItemData,
 
@@ -142,6 +146,7 @@ impl UserItem {
             user_data: UserItemData {
                 username,
                 ping_in_ms: 0,
+                connected_time_point: Local::now(),
             },
             button_state: button::State::default(),
         }

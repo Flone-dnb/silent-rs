@@ -1,4 +1,5 @@
 // External.
+use chrono::prelude::*;
 use iced::{button, Button, Color, Column, Length, Text};
 
 // Custom.
@@ -25,21 +26,37 @@ impl UserInfo {
         self.user_data = user_data;
     }
     pub fn get_ui(&mut self, current_style: &StyleTheme) -> Column<MainMessage> {
+        let time_diff = Local::now() - self.user_data.connected_time_point;
+        let mut _time_since_connected = String::new();
+        if time_diff.num_minutes() == 0 {
+            _time_since_connected = String::from("just now.");
+        } else if time_diff.num_hours() == 0 {
+            _time_since_connected = format!("{} min. ago.", time_diff.num_minutes());
+        } else {
+            _time_since_connected = format!("{} h. ago.", time_diff.num_hours());
+        }
+
         Column::new()
             .push(
                 Text::new(&self.user_data.username)
-                    .color(Color::WHITE)
-                    .size(25),
+                    .color(current_style.get_message_author_color())
+                    .size(27),
             )
             .height(Length::Shrink)
             .push(
                 Text::new(format!(
-                    "ping: {} ms",
+                    "ping: {} ms.",
                     self.user_data.ping_in_ms.to_string()
                 ))
                 .color(Color::WHITE)
                 .height(Length::Shrink)
-                .size(20),
+                .size(22),
+            )
+            .push(
+                Text::new(format!("connected: {}", _time_since_connected))
+                    .color(Color::WHITE)
+                    .height(Length::Shrink)
+                    .size(22),
             )
             .push(Column::new().height(Length::Fill))
             .push(

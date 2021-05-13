@@ -1,8 +1,8 @@
 // External.
 use chrono::prelude::*;
 use iced::{
-    scrollable, Color, Column, Container, HorizontalAlignment, Length, Point, Rectangle, Row,
-    Scrollable, Size, Text, VerticalAlignment,
+    scrollable, Color, Column, Container, HorizontalAlignment, Length, Row, Scrollable, Text,
+    VerticalAlignment,
 };
 
 // Std.
