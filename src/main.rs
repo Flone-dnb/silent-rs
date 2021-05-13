@@ -19,6 +19,7 @@ use global_params::*;
 use layouts::connect_layout::*;
 use layouts::main_layout::*;
 use layouts::settings_layout::*;
+use services::config_service::*;
 use services::net_service::*;
 use services::user_tcp_service::ConnectResult;
 use themes::StyleTheme;
@@ -33,7 +34,7 @@ fn main() -> iced::Result {
 
     let icon = Icon::from_rgba(read_icon_png(String::from("res/app_icon.png")), 256, 256).unwrap();
     config.window.icon = Some(icon);
-    config.default_text_size = 28;
+    config.default_text_size = 26;
     Silent::run(config)
 }
 
@@ -64,6 +65,7 @@ struct Silent {
 
     net_service: NetService,
 
+    ui_scaling: f64,
     is_connected: bool,
 
     current_window_layout: WindowLayout,
@@ -93,6 +95,7 @@ pub enum MainMessage {
     PortInputChanged(String),
     PasswordInputChanged(String),
     ToSettingsButtonPressed,
+    UIScalingSliderMoved(i32),
     Tick(()),
 }
 
@@ -106,6 +109,7 @@ impl Silent {
             connect_layout: ConnectLayout::default(),
             settings_layout: SettingsLayout::default(),
             main_layout: MainLayout::default(),
+            ui_scaling: 1.0,
             is_connected: false,
             net_service: NetService::new(),
             internal_messages: Arc::new(Mutex::new(messages)),
@@ -128,6 +132,10 @@ impl Application for Silent {
 
     fn title(&self) -> String {
         String::from("Silent")
+    }
+
+    fn scale_factor(&self) -> f64 {
+        self.ui_scaling
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
@@ -165,6 +173,7 @@ impl Application for Silent {
                 for message in guard.iter() {
                     match message {
                         InternalMessage::InitUserConfig => {
+                            // Fill connect fields from config.
                             if let Err(msg) = self.connect_layout.read_user_config() {
                                 self.connect_layout // use connect result to show this error
                                     .set_connect_result(ConnectResult::OtherErr(format!(
@@ -174,6 +183,18 @@ impl Application for Silent {
                                         line!()
                                     )));
                             }
+
+                            // Apply settings.
+                            let config = UserConfig::new();
+                            if let Err(msg) = &config {
+                                let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
+                                self.connect_layout
+                                    .set_connect_result(ConnectResult::OtherErr(error_msg));
+                            }
+                            let config = config.unwrap();
+
+                            self.settings_layout.ui_scaling_slider_value = config.ui_scaling as i32;
+                            self.ui_scaling = config.ui_scaling as f64 / 100.0;
                         }
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
@@ -312,6 +333,33 @@ impl Application for Silent {
                     opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
                 }
             },
+            MainMessage::UIScalingSliderMoved(value) => {
+                self.settings_layout.ui_scaling_slider_value = value;
+                self.ui_scaling = value as f64 / 100.0;
+
+                // Save to config.
+                let config = UserConfig::new();
+                if let Err(msg) = &config {
+                    let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
+                    if !self.is_connected {
+                        self.connect_layout
+                            .set_connect_result(ConnectResult::OtherErr(error_msg));
+                    } else {
+                        self.main_layout.add_system_message(error_msg);
+                    }
+                }
+                let mut config = config.unwrap();
+                config.ui_scaling = value as u16;
+                if let Err(msg) = config.save() {
+                    let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
+                    if !self.is_connected {
+                        self.connect_layout
+                            .set_connect_result(ConnectResult::OtherErr(error_msg));
+                    } else {
+                        self.main_layout.add_system_message(error_msg);
+                    }
+                }
+            }
         }
 
         Command::none()

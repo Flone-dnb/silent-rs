@@ -40,7 +40,7 @@ impl UserInfo {
             .push(
                 Text::new(&self.user_data.username)
                     .color(current_style.get_message_author_color())
-                    .size(27),
+                    .size(25),
             )
             .height(Length::Shrink)
             .push(

@@ -1,7 +1,11 @@
+use std::ops::RangeInclusive;
+
 // External.
-use iced::{button, Button, Color, Column, Container, Element, Length, Row, Text};
+use iced::{button, slider, Button, Color, Column, Container, Element, Length, Row, Slider, Text};
+use iced_native::Widget;
 
 // Custom.
+use crate::global_params::*;
 use crate::themes::*;
 use crate::MainMessage;
 
@@ -13,15 +17,32 @@ pub enum SettingsLayoutMessage {
     FromSettingsButtonPressed,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SettingsLayout {
     active_option: CurrentActiveOption,
 
     about_details: AboutDetails,
 
+    pub ui_scaling_slider_value: i32,
+
     back_button: button::State,
     general_button: button::State,
     about_button: button::State,
+    ui_scaling_slider_state: slider::State,
+}
+
+impl Default for SettingsLayout {
+    fn default() -> Self {
+        SettingsLayout {
+            ui_scaling_slider_value: 100,
+            active_option: CurrentActiveOption::General,
+            about_details: AboutDetails::default(),
+            ui_scaling_slider_state: slider::State::default(),
+            back_button: button::State::default(),
+            general_button: button::State::default(),
+            about_button: button::State::default(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -77,8 +98,26 @@ impl SettingsLayout {
                 general_button = general_button.style(current_style.theme);
                 about_button = about_button.style(default_theme::GrayButton);
 
-                right_content_column =
-                    right_content_column.push(Text::new("General settings...").color(Color::WHITE));
+                right_content_column = right_content_column
+                    .push(Text::new("UI scaling:").color(Color::WHITE))
+                    .push(
+                        Row::new()
+                            .push(
+                                Slider::new(
+                                    &mut self.ui_scaling_slider_state,
+                                    RangeInclusive::new(UI_SCALING_MIN, UI_SCALING_MAX),
+                                    self.ui_scaling_slider_value,
+                                    MainMessage::UIScalingSliderMoved,
+                                )
+                                .width(Length::FillPortion(50)),
+                            )
+                            .push(Column::new().width(Length::FillPortion(2)))
+                            .push(
+                                Text::new(format!("{}%", self.ui_scaling_slider_value))
+                                    .width(Length::FillPortion(20)),
+                            )
+                            .push(Column::new().width(Length::FillPortion(28))),
+                    );
             }
             CurrentActiveOption::About => {
                 general_button = general_button.style(default_theme::GrayButton);
@@ -105,38 +144,38 @@ impl SettingsLayout {
         }
 
         let content = Row::new()
-            .padding(10)
-            .spacing(20)
+            .padding(5)
+            .spacing(15)
             .push(
                 Container::new(
                     Column::new()
                         .padding(10)
                         .push(Column::new().height(Length::FillPortion(10)))
-                        .push(general_button)
+                        .push(general_button.height(Length::Shrink))
                         .push(Column::new().height(Length::FillPortion(5)))
-                        .push(about_button)
+                        .push(about_button.height(Length::Shrink))
                         .push(Column::new().height(Length::FillPortion(40)))
                         .push(
                             Button::new(
                                 &mut self.back_button,
-                                Text::new("Return").color(Color::WHITE),
+                                Text::new("back").color(Color::WHITE),
                             )
                             .on_press(MainMessage::MessageFromSettingsLayout(
                                 SettingsLayoutMessage::FromSettingsButtonPressed,
                             ))
                             .width(Length::Fill)
-                            .height(Length::FillPortion(8))
+                            .height(Length::Shrink)
                             .style(current_style.theme),
                         )
                         .push(Column::new().height(Length::FillPortion(10))),
                 )
-                .width(Length::FillPortion(20))
+                .width(Length::FillPortion(13))
                 .height(Length::Fill)
                 .style(current_style.theme),
             )
             .push(
                 Container::new(right_content_column)
-                    .width(Length::FillPortion(80))
+                    .width(Length::FillPortion(87))
                     .height(Length::Fill)
                     .style(current_style.theme),
             );

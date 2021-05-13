@@ -16,6 +16,7 @@ pub struct UserConfig {
     pub server: String,
     pub server_port: u16,
     pub server_password: String,
+    pub ui_scaling: u16,
 }
 
 impl UserConfig {
@@ -130,7 +131,7 @@ impl UserConfig {
             ));
         }
 
-        // Read server port.
+        // Write server port.
         let res = UserConfig::write_u16_to_file(&mut config_file, self.server_port);
         if let Err(msg) = res {
             return Err(format!(
@@ -164,6 +165,17 @@ impl UserConfig {
                     line!()
                 ));
             }
+        }
+
+        // Write ui scaling.
+        let res = UserConfig::write_u16_to_file(&mut config_file, self.ui_scaling);
+        if let Err(msg) = res {
+            return Err(format!(
+                "{} (writing ui scaling) at [{}, {}]",
+                msg,
+                file!(),
+                line!()
+            ));
         }
 
         // new settings go here...
@@ -203,6 +215,7 @@ impl UserConfig {
             server: String::from(""),
             server_port: DEFAULT_SERVER_PORT,
             server_password: String::from(""),
+            ui_scaling: 100,
         }
     }
     fn open() -> Result<UserConfig, String> {
@@ -347,6 +360,18 @@ impl UserConfig {
                 }
                 user_config.server_password = password.unwrap();
             }
+
+            // Read ui scaling.
+            let ui_scaling = UserConfig::read_u16_from_file(&mut config_file);
+            if let Err(msg) = ui_scaling {
+                return Err(format!(
+                    "{} (reading ui scaling) at [{}, {}]",
+                    msg,
+                    file!(),
+                    line!()
+                ));
+            }
+            user_config.ui_scaling = ui_scaling.unwrap();
 
             //
             // please use 'config_version' variable to handle old config versions...

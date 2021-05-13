@@ -83,13 +83,13 @@ impl MainLayout {
                     .push(
                         Button::new(
                             &mut self.settings_button,
-                            Text::new("settings").color(Color::WHITE).size(20),
+                            Text::new("settings").color(Color::WHITE).size(18),
                         )
                         .on_press(MainMessage::ToSettingsButtonPressed)
                         .style(current_style.theme)
                         .width(Length::Shrink),
                     )
-                    .height(Length::FillPortion(5)),
+                    .height(Length::FillPortion(6)),
             )
             .push(
                 Text::new("Text Chat")
@@ -125,7 +125,7 @@ impl MainLayout {
             .align_items(Align::Center)
             .padding(5)
             .spacing(5)
-            .push(Row::new().height(Length::FillPortion(5)))
+            .push(Row::new().height(Length::FillPortion(6)))
             .push(
                 Text::new(format!("Connected: {}", self.connected_users))
                     .horizontal_alignment(HorizontalAlignment::Center)
