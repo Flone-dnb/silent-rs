@@ -2,7 +2,6 @@ use std::ops::RangeInclusive;
 
 // External.
 use iced::{button, slider, Button, Color, Column, Container, Element, Length, Row, Slider, Text};
-use iced_native::Widget;
 
 // Custom.
 use crate::global_params::*;
@@ -90,7 +89,7 @@ impl SettingsLayout {
         .height(Length::FillPortion(8));
 
         // Create right side content placeholder.
-        let mut right_content_column: Column<MainMessage> = Column::new().padding(10).spacing(20);
+        let mut right_content_column: Column<MainMessage> = Column::new().padding(10).spacing(10);
 
         // Set styles for buttons.
         match self.active_option {
@@ -99,7 +98,7 @@ impl SettingsLayout {
                 about_button = about_button.style(default_theme::GrayButton);
 
                 right_content_column = right_content_column
-                    .push(Text::new("UI scaling:").color(Color::WHITE))
+                    .push(Text::new("UI scaling").color(Color::WHITE))
                     .push(
                         Row::new()
                             .push(
@@ -109,7 +108,8 @@ impl SettingsLayout {
                                     self.ui_scaling_slider_value,
                                     MainMessage::UIScalingSliderMoved,
                                 )
-                                .width(Length::FillPortion(50)),
+                                .width(Length::FillPortion(50))
+                                .style(current_style.theme),
                             )
                             .push(Column::new().width(Length::FillPortion(2)))
                             .push(
