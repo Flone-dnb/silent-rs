@@ -34,7 +34,7 @@ impl UserInfo {
             .height(Length::Shrink)
             .push(
                 Text::new(format!(
-                    "Ping: {} ms",
+                    "ping: {} ms",
                     self.user_data.ping_in_ms.to_string()
                 ))
                 .color(Color::WHITE)
