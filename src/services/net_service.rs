@@ -35,7 +35,7 @@ pub struct NetService {
 impl NetService {
     pub fn new() -> Self {
         Self {
-            user_service: Arc::new(Mutex::new(UserTcpService::new())),
+            user_service: Arc::new(Mutex::new(UserTcpService::new(String::from("")))),
             last_time_text_message_sent: Local::now(),
         }
     }
@@ -44,10 +44,11 @@ impl NetService {
         &mut self,
         config: ClientConfig,
         username: String,
+        server_password: String,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
-        self.user_service = Arc::new(Mutex::new(UserTcpService::new()));
+        self.user_service = Arc::new(Mutex::new(UserTcpService::new(server_password)));
         let user_service_copy = Arc::clone(&self.user_service);
         thread::spawn(move || {
             NetService::service(
@@ -108,7 +109,7 @@ impl NetService {
             TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
 
         if tcp_socket.is_err() {
-            connect_layout_sender.send(ConnectResult::OtherErr(
+            connect_layout_sender.send(ConnectResult::Err(
                 String::from("Can't connect to the server. Make sure the specified server and port are correct, otherwise the server might be offline.")
             )).unwrap();
             return;
@@ -117,7 +118,7 @@ impl NetService {
         let tcp_socket = tcp_socket.unwrap();
         if tcp_socket.set_nodelay(true).is_err() {
             connect_layout_sender
-                .send(ConnectResult::OtherErr(String::from(
+                .send(ConnectResult::Err(String::from(
                     "tcp_socket.set_nodelay() failed.",
                 )))
                 .unwrap();
@@ -125,7 +126,7 @@ impl NetService {
         }
         if tcp_socket.set_nonblocking(true).is_err() {
             connect_layout_sender
-                .send(ConnectResult::OtherErr(String::from(
+                .send(ConnectResult::Err(String::from(
                     "tcp_socket.set_nonblocking() failed.",
                 )))
                 .unwrap();
@@ -169,12 +170,14 @@ impl NetService {
                         .unwrap()
                         .push(InternalMessage::RefreshConnectedUsersCount(connected_users));
                 }
-                ConnectResult::Err(io_error) => {
+                ConnectResult::IoErr(io_error) => {
                     let mut err = io_error;
                     if let IoResult::Err(msg) = err {
                         err = IoResult::Err(format!("{} at [{}, {}]", msg, file!(), line!()));
                     }
-                    connect_layout_sender.send(ConnectResult::Err(err)).unwrap();
+                    connect_layout_sender
+                        .send(ConnectResult::IoErr(err))
+                        .unwrap();
                 }
                 res => {
                     connect_layout_sender.send(res).unwrap();

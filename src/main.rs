@@ -177,7 +177,7 @@ impl Application for Silent {
                             // Fill connect fields from config.
                             if let Err(msg) = self.connect_layout.read_user_config() {
                                 self.connect_layout // use connect result to show this error
-                                    .set_connect_result(ConnectResult::OtherErr(format!(
+                                    .set_connect_result(ConnectResult::Err(format!(
                                         "{} at [{}, {}]",
                                         msg,
                                         file!(),
@@ -190,7 +190,7 @@ impl Application for Silent {
                             if let Err(msg) = &config {
                                 let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
                                 self.connect_layout
-                                    .set_connect_result(ConnectResult::OtherErr(error_msg));
+                                    .set_connect_result(ConnectResult::Err(error_msg));
                             }
                             let config = config.unwrap();
 
@@ -289,6 +289,7 @@ impl Application for Silent {
                         self.net_service.start(
                             config,
                             self.connect_layout.username_string.clone(),
+                            self.connect_layout.password_string.clone(),
                             tx,
                             Arc::clone(&self.internal_messages),
                         );
@@ -357,7 +358,7 @@ impl Application for Silent {
                     let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
                     if !self.is_connected {
                         self.connect_layout
-                            .set_connect_result(ConnectResult::OtherErr(error_msg));
+                            .set_connect_result(ConnectResult::Err(error_msg));
                     } else {
                         self.main_layout.add_system_message(error_msg);
                     }
@@ -368,7 +369,7 @@ impl Application for Silent {
                     let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
                     if !self.is_connected {
                         self.connect_layout
-                            .set_connect_result(ConnectResult::OtherErr(error_msg));
+                            .set_connect_result(ConnectResult::Err(error_msg));
                     } else {
                         self.main_layout.add_system_message(error_msg);
                     }

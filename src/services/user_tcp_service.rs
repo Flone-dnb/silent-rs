@@ -27,6 +27,7 @@ enum ConnectServerAnswer {
     Ok = 0,
     WrongVersion = 1,
     UsernameTaken = 2,
+    WrongPassword = 3,
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
@@ -55,8 +56,8 @@ impl UserInfo {
 #[derive(Debug, PartialEq)]
 pub enum ConnectResult {
     Ok,
-    Err(IoResult),
-    OtherErr(String),
+    IoErr(IoResult),
+    Err(String),
     InfoAboutOtherUser(UserInfo),
 }
 
@@ -79,15 +80,17 @@ pub enum HandleMessageResult {
 pub struct UserTcpService {
     pub user_state: UserState,
     pub user_info: UserInfo,
+    pub server_password: String,
     pub tcp_socket: Option<TcpStream>,
     pub io_tcp_mutex: Mutex<()>,
 }
 
 impl UserTcpService {
-    pub fn new() -> Self {
+    pub fn new(server_password: String) -> Self {
         UserTcpService {
             user_state: UserState::NotConnected,
             tcp_socket: None,
+            server_password: server_password,
             user_info: UserInfo {
                 username: String::from(""),
             },
@@ -341,6 +344,8 @@ impl UserTcpService {
         // (size): version string,
         // (u16): size of the username,
         // (size): username string,
+        // (u16): size of the password string,
+        // (size): password string.
         let ver_str_len = env!("CARGO_PKG_VERSION").len() as u16;
         let name_str_len = self.user_info.username.len() as u16;
 
@@ -349,6 +354,18 @@ impl UserTcpService {
         let mut ver_str_buf = Vec::from(env!("CARGO_PKG_VERSION").as_bytes());
         let mut name_str_len_buf = u16::encode::<u16>(&name_str_len).unwrap();
         let mut name_str_buf = Vec::from(self.user_info.username.as_bytes());
+        // server password len
+        let server_pass_len = self.server_password.len() as u16;
+        let pass_str_len_buf = u16::encode::<u16>(&server_pass_len);
+        if let Err(e) = pass_str_len_buf {
+            return ConnectResult::Err(format!(
+                "u16::encode::<u16>() failed, error: {} at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut pass_str_len_buf = pass_str_len_buf.unwrap();
 
         // Move all buffers to one big buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
@@ -356,16 +373,22 @@ impl UserTcpService {
         out_buffer.append(&mut ver_str_buf);
         out_buffer.append(&mut name_str_len_buf);
         out_buffer.append(&mut name_str_buf);
+        out_buffer.append(&mut pass_str_len_buf);
+        if !self.server_password.is_empty() {
+            // append password
+            let mut password_buf = Vec::from(self.server_password.as_bytes());
+            out_buffer.append(&mut password_buf);
+        }
 
         // Send this buffer.
         loop {
             match self.write_to_socket(&mut out_buffer) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
                 IoResult::Ok(_bytes) => break,
-                res => return ConnectResult::Err(res),
+                res => return ConnectResult::IoErr(res),
             };
         }
 
@@ -374,11 +397,11 @@ impl UserTcpService {
         loop {
             match self.read_from_socket(&mut in_buf) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
                 IoResult::Ok(_bytes) => break,
-                res => return ConnectResult::Err(res),
+                res => return ConnectResult::IoErr(res),
             }
         }
 
@@ -386,16 +409,21 @@ impl UserTcpService {
         let answer_id = u16::decode::<u16>(&in_buf).unwrap();
         match FromPrimitive::from_i32(answer_id as i32) {
             Some(ConnectServerAnswer::Ok) => {}
+            Some(ConnectServerAnswer::WrongPassword) =>{
+                return ConnectResult::Err(
+                    String::from("Server reply: wrong password.")
+                );
+            }
             Some(ConnectServerAnswer::WrongVersion) => {
                 // Get correct version string (get size first).
                 loop {
                     match self.read_from_socket(&mut in_buf) {
                         IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                             continue;
                         }
                         IoResult::Ok(_bytes) => break,
-                        res => return ConnectResult::Err(res),
+                        res => return ConnectResult::IoErr(res),
                     }
                 }
                 let required_ver_str_size = u16::decode::<u16>(&in_buf).unwrap();
@@ -405,31 +433,31 @@ impl UserTcpService {
                 loop {
                     match self.read_from_socket(&mut required_ver_str_buf) {
                         IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                             continue;
                         }
                         IoResult::Ok(_bytes) => break,
-                        res => return ConnectResult::Err(res),
+                        res => return ConnectResult::IoErr(res),
                     }
                 }
                 let ver_str = std::str::from_utf8(&required_ver_str_buf);
                 if let Err(e) = ver_str{
-                    return ConnectResult::OtherErr(
+                    return ConnectResult::Err(
                         format!("std::str::from_utf8() failed, error: failed to convert on 'required_ver_str_buf' (error: {}) at [{}, {}]",
                         e, file!(), line!()));
                 }
-                return ConnectResult::OtherErr(
+                return ConnectResult::Err(
                         format!(
-                            "Your client version ({}) is not supported by this server. The server supports version ({}).",
+                            "Server reply: your client version ({}) is not supported by this server, the server supports version ({}).",
                             env!("CARGO_PKG_VERSION"),
                             std::str::from_utf8(&required_ver_str_buf).unwrap()
                         )
                     );
             }
             Some(ConnectServerAnswer::UsernameTaken) =>
-            return ConnectResult::OtherErr(String::from("Somebody with your username already persists on the server. Please, choose another username.")),
+            return ConnectResult::Err(String::from("Server reply: somebody with your username already persists on the server, please, choose another username.")),
             None => {
-                return ConnectResult::OtherErr(format!("FromPrimitive::from_i32() failed at [{}, {}]", file!(), line!()))
+                return ConnectResult::Err(format!("FromPrimitive::from_i32() failed at [{}, {}]", file!(), line!()))
             }
         }
 
@@ -440,17 +468,17 @@ impl UserTcpService {
         loop {
             match self.read_from_socket(&mut users_count_buf) {
                 IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
                 IoResult::Ok(_) => break,
-                res => return ConnectResult::Err(res),
+                res => return ConnectResult::IoErr(res),
             }
         }
 
         let user_count = u64::decode::<u64>(&users_count_buf);
         if let Err(e) = user_count {
-            return ConnectResult::OtherErr(format!(
+            return ConnectResult::Err(format!(
                 "u64::decode::<u64>() failed, error: failed to decode on 'users_count_buf' (error: {}) at [{}, {}]",
                 e, file!(), line!()
             ));
@@ -463,16 +491,16 @@ impl UserTcpService {
             loop {
                 match self.read_from_socket(&mut username_len_buf) {
                     IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                         continue;
                     }
                     IoResult::Ok(_) => break,
-                    res => return ConnectResult::Err(res),
+                    res => return ConnectResult::IoErr(res),
                 }
             }
             let username_len = u16::decode::<u16>(&username_len_buf);
             if let Err(e) = username_len {
-                return ConnectResult::OtherErr(format!(
+                return ConnectResult::Err(format!(
                     "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
                     e, file!(), line!()
                 ));
@@ -484,16 +512,16 @@ impl UserTcpService {
             loop {
                 match self.read_from_socket(&mut username_buf) {
                     IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_CONNECT_MS));
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                         continue;
                     }
                     IoResult::Ok(_) => break,
-                    res => return ConnectResult::Err(res),
+                    res => return ConnectResult::IoErr(res),
                 }
             }
             let username = std::str::from_utf8(&username_buf);
             if let Err(e) = username {
-                return ConnectResult::OtherErr(
+                return ConnectResult::Err(
                     format!("std::str::from_utf8() failed, error: failed to convert on 'username_buf' (error: {}) at [{}, {}]",
                     e, file!(), line!()));
             }

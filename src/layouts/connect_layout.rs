@@ -1,6 +1,7 @@
 // External.
 use iced::{
-    button, text_input, Align, Button, Color, Column, Element, Length, Row, Text, TextInput,
+    button, text_input, Align, Button, Color, Column, Element, HorizontalAlignment, Length, Row,
+    Text, TextInput,
 };
 
 // Custom.
@@ -105,6 +106,7 @@ impl ConnectLayout {
             && self.username_string.chars().count() > 1
             && self.port_string.chars().count() > 1
         {
+            self.show_input_notice = false;
             Ok(ClientConfig {
                 username: self.username_string.clone(),
                 server_name: self.servername_string.clone(),
@@ -213,18 +215,29 @@ impl ConnectLayout {
         }
 
         let connect_text: String = match &self.connect_result {
-            ConnectResult::Err(io_err) => match io_err {
+            ConnectResult::IoErr(io_err) => match io_err {
                 IoResult::FIN => {
                     String::from("An IO error occurred, the server closed connection.")
                 }
                 IoResult::Err(e) => format!("An IO error occurred, error: {}", e),
                 _ => String::from("An IO error occurred."),
             },
-            ConnectResult::OtherErr(msg) => format!("There was an error: {}", msg),
+            ConnectResult::Err(msg) => format!("There was an error: {}", msg),
             _ => String::from(""),
         };
 
-        content = content.push(Text::new(connect_text).color(Color::WHITE).size(25));
+        content = content.push(
+            Row::new()
+                .push(Column::new().width(Length::FillPortion(20)))
+                .push(
+                    Text::new(connect_text)
+                        .color(Color::WHITE)
+                        .size(25)
+                        .width(Length::FillPortion(60))
+                        .horizontal_alignment(HorizontalAlignment::Center),
+                )
+                .push(Column::new().width(Length::FillPortion(20))),
+        );
 
         content = content.push(Column::new().height(Length::FillPortion(10)));
 
@@ -246,8 +259,6 @@ impl ConnectLayout {
                     .push(Column::new().width(Length::FillPortion(40))),
             )
             .push(Column::new().height(Length::FillPortion(10)));
-
-        self.show_input_notice = false;
 
         content.into()
     }
