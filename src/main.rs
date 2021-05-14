@@ -274,7 +274,9 @@ impl Application for Silent {
                 }
             }
             MainMessage::PasswordInputChanged(text) => {
-                self.connect_layout.password_string = text;
+                if text.chars().count() <= MAX_PASSWORD_SIZE {
+                    self.connect_layout.password_string = text;
+                }
             }
             MainMessage::MessageFromConnectLayout(message) => match message {
                 ConnectLayoutMessage::TabPressed => {
