@@ -1,4 +1,5 @@
 // External.
+use chrono::prelude::*;
 use iced::{
     executor, keyboard, time, window::icon::Icon, Application, Clipboard, Color, Command, Element,
     Settings, Subscription,
@@ -297,7 +298,12 @@ impl Application for Silent {
                         );
 
                         loop {
-                            let received = rx.recv().unwrap();
+                            let received = rx.recv();
+                            if received.is_err() {
+                                // start() already finished probably because of wrong password wait
+                                break;
+                            }
+                            let received = received.unwrap();
 
                             match received {
                                 ConnectResult::Ok => {
@@ -322,6 +328,19 @@ impl Application for Silent {
                                 }
                                 ConnectResult::InfoAboutOtherUser(user_info) => {
                                     self.main_layout.add_user(user_info.username, true);
+                                }
+                                ConnectResult::SleepWithErr {
+                                    message,
+                                    sleep_in_sec,
+                                } => {
+                                    self.connect_layout
+                                        .set_connect_result(ConnectResult::Err(message));
+
+                                    self.net_service.password_retry = PasswordRetrySleep {
+                                        sleep: true,
+                                        sleep_time_sec: sleep_in_sec,
+                                        sleep_time_start: Local::now(),
+                                    }
                                 }
                                 _ => {
                                     self.connect_layout.set_connect_result(received);

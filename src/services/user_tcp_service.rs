@@ -58,6 +58,10 @@ pub enum ConnectResult {
     Ok,
     IoErr(IoResult),
     Err(String),
+    SleepWithErr {
+        message: String,
+        sleep_in_sec: usize,
+    },
     InfoAboutOtherUser(UserInfo),
 }
 
@@ -410,9 +414,10 @@ impl UserTcpService {
         match FromPrimitive::from_i32(answer_id as i32) {
             Some(ConnectServerAnswer::Ok) => {}
             Some(ConnectServerAnswer::WrongPassword) =>{
-                return ConnectResult::Err(
-                    String::from("Server reply: wrong password.")
-                );
+                return ConnectResult::SleepWithErr{
+                    message: format!("Server reply: wrong password, try again after {} seconds...", PASSWORD_RETRY_DELAY_SEC),
+                    sleep_in_sec: PASSWORD_RETRY_DELAY_SEC
+                };
             }
             Some(ConnectServerAnswer::WrongVersion) => {
                 // Get correct version string (get size first).

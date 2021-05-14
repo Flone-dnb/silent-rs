@@ -27,8 +27,16 @@ pub struct ClientConfig {
 }
 
 #[derive(Debug)]
+pub struct PasswordRetrySleep {
+    pub sleep_time_start: DateTime<Local>,
+    pub sleep_time_sec: usize,
+    pub sleep: bool,
+}
+
+#[derive(Debug)]
 pub struct NetService {
-    user_service: Arc<Mutex<UserTcpService>>,
+    pub user_service: Arc<Mutex<UserTcpService>>,
+    pub password_retry: PasswordRetrySleep,
     last_time_text_message_sent: DateTime<Local>,
 }
 
@@ -37,6 +45,11 @@ impl NetService {
         Self {
             user_service: Arc::new(Mutex::new(UserTcpService::new(String::from("")))),
             last_time_text_message_sent: Local::now(),
+            password_retry: PasswordRetrySleep {
+                sleep_time_start: Local::now(),
+                sleep_time_sec: 0,
+                sleep: false,
+            },
         }
     }
 
@@ -48,6 +61,13 @@ impl NetService {
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
     ) {
+        if self.password_retry.sleep {
+            let time_diff = Local::now() - self.password_retry.sleep_time_start;
+            if time_diff.num_seconds() < self.password_retry.sleep_time_sec as i64 {
+                return;
+            }
+        }
+
         self.user_service = Arc::new(Mutex::new(UserTcpService::new(server_password)));
         let user_service_copy = Arc::clone(&self.user_service);
         thread::spawn(move || {
