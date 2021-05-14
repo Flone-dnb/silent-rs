@@ -234,16 +234,18 @@ impl Application for Silent {
                     self.main_layout.hide_user_info();
                 }
                 MainLayoutMessage::MessageInputEnterPressed => {
-                    let message = self.main_layout.get_message_input();
-                    if !message.is_empty() {
-                        if let Err(msg) = self.net_service.send_user_message(message) {
-                            if msg.show_modal {
-                                self.main_layout.show_modal_window(msg.message);
+                    if !self.main_layout.is_modal_window_showed() {
+                        let message = self.main_layout.get_message_input();
+                        if !message.is_empty() {
+                            if let Err(msg) = self.net_service.send_user_message(message) {
+                                if msg.show_modal {
+                                    self.main_layout.show_modal_window(msg.message);
+                                } else {
+                                    self.main_layout.add_system_message(msg.message);
+                                }
                             } else {
-                                self.main_layout.add_system_message(msg.message);
+                                self.main_layout.clear_message_input();
                             }
-                        } else {
-                            self.main_layout.clear_message_input();
                         }
                     }
                 }
@@ -252,8 +254,10 @@ impl Application for Silent {
                 self.current_window_layout = WindowLayout::SettingsWindow
             }
             MainMessage::MessageInputChanged(text) => {
-                if text.chars().count() <= MAX_MESSAGE_SIZE {
-                    self.main_layout.message_string = text
+                if !self.main_layout.is_modal_window_showed() {
+                    if text.chars().count() <= MAX_MESSAGE_SIZE {
+                        self.main_layout.message_string = text
+                    }
                 }
             }
             MainMessage::UsernameInputChanged(text) => {

@@ -46,6 +46,9 @@ pub struct MainLayout {
 }
 
 impl MainLayout {
+    pub fn is_modal_window_showed(&self) -> bool {
+        self.modal_state.is_shown()
+    }
     pub fn show_modal_window(&mut self, message: String) {
         self.modal_state.inner_mut().message = message;
         self.modal_state.show(true);
