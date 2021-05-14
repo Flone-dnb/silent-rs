@@ -4,9 +4,11 @@ use iced::{
     scrollable, Color, Column, Container, HorizontalAlignment, Length, Row, Scrollable, Text,
     VerticalAlignment,
 };
+use rusty_audio::Audio;
 
 // Std.
 use std::collections::LinkedList;
+use std::thread;
 
 // Custom.
 use crate::global_params::*;
@@ -90,6 +92,13 @@ impl ChatList {
                 self.messages.pop_front();
             }
         }
+
+        thread::spawn(move || {
+            let mut audio = Audio::new();
+            audio.add("sound", NEW_MESSAGE_SOUND_PATH);
+            audio.play("sound"); // Execution continues while playback occurs in another thread.
+            audio.wait(); // Block until sounds finish playing
+        });
     }
 }
 

@@ -19,3 +19,7 @@ pub const INTERVAL_INTERNAL_MESSAGE_MS: u64 = 500;
 
 pub const INTERVAL_TCP_IDLE_MS: u64 = 250;
 pub const INTERVAL_TCP_MESSAGE_MS: u64 = 10;
+
+pub const NEW_MESSAGE_SOUND_PATH: &str = "res/sounds/newmessage.wav";
+pub const CONNECTED_SOUND_PATH: &str = "res/sounds/connect.wav";
+pub const DISCONNECT_SOUND_PATH: &str = "res/sounds/disconnect.wav";

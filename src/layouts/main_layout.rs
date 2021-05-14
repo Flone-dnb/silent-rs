@@ -4,8 +4,13 @@ use iced::{
     Text, TextInput, VerticalAlignment,
 };
 use iced_aw::{modal, Card, Modal};
+use rusty_audio::Audio;
+
+// Std.
+use std::thread;
 
 // Custom.
+use crate::global_params::*;
 use crate::themes::*;
 use crate::widgets::chat_list::*;
 use crate::widgets::users_list::*;
@@ -73,6 +78,12 @@ impl MainLayout {
         self.connected_users = self.users_list.get_user_count();
         if !dont_show_notice {
             self.add_info_message(format!("{} just connected to the chat.", username));
+            thread::spawn(move || {
+                let mut audio = Audio::new();
+                audio.add("sound", CONNECTED_SOUND_PATH);
+                audio.play("sound"); // Execution continues while playback occurs in another thread.
+                audio.wait(); // Block until sounds finish playing
+            });
         }
     }
     pub fn remove_user(&mut self, username: String) -> Result<(), String> {
@@ -81,6 +92,12 @@ impl MainLayout {
             Ok(()) => {
                 self.connected_users = self.users_list.get_user_count();
                 self.add_info_message(format!("{} disconnected from the chat.", username));
+                thread::spawn(move || {
+                    let mut audio = Audio::new();
+                    audio.add("sound", DISCONNECT_SOUND_PATH);
+                    audio.play("sound"); // Execution continues while playback occurs in another thread.
+                    audio.wait(); // Block until sounds finish playing
+                });
                 return Ok(());
             }
         }
