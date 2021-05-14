@@ -187,7 +187,7 @@ impl UserTcpService {
         HandleMessageResult::Ok
     }
     pub fn read_from_socket(&mut self, buf: &mut [u8]) -> IoResult {
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return IoResult::Err(format!(
                 "An error occurred at UserTcpService::read_from_socket(), error: passed 'buf' has 0 len at [{}, {}]", file!(), line!()
             ));
@@ -507,7 +507,7 @@ impl UserTcpService {
 
         self.user_state = UserState::Connected;
 
-        return ConnectResult::Ok;
+        ConnectResult::Ok
     }
     fn read_u16_and_string_from_socket(&mut self) -> Result<String, IoResult> {
         // Get len (u16).

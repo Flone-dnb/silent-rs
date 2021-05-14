@@ -118,7 +118,7 @@ impl Clone for UserItemData {
         UserItemData {
             username: self.username.clone(),
             ping_in_ms: self.ping_in_ms,
-            connected_time_point: self.connected_time_point.clone(),
+            connected_time_point: self.connected_time_point,
         }
     }
 }

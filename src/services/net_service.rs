@@ -126,14 +126,14 @@ impl NetService {
                     let mut connected_users = 0usize;
                     loop {
                         let received = receiver.recv().unwrap();
-                        if received.is_none() {
-                            // End.
-                            break;
-                        } else {
+                        if let Some(user_info) = received {
                             connect_layout_sender
-                                .send(ConnectResult::InfoAboutOtherUser(received.unwrap()))
+                                .send(ConnectResult::InfoAboutOtherUser(user_info))
                                 .unwrap();
                             connected_users += 1;
+                        } else {
+                            // End.
+                            break;
                         }
                     }
                     connect_layout_sender.send(ConnectResult::Ok).unwrap();
