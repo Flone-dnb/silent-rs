@@ -94,9 +94,10 @@ pub enum MainMessage {
     ServernameInputChanged(String),
     PortInputChanged(String),
     PasswordInputChanged(String),
-    ToSettingsButtonPressed,
     UIScalingSliderMoved(i32),
     Tick(()),
+    ModalWindowMessage(ModalMessage),
+    ToSettingsButtonPressed,
 }
 
 impl Silent {
@@ -169,8 +170,8 @@ impl Application for Silent {
     ) -> Command<Self::Message> {
         match message {
             MainMessage::Tick(_) => {
-                let mut guard = self.internal_messages.lock().unwrap();
-                for message in guard.iter() {
+                let mut guard_messages = self.internal_messages.lock().unwrap();
+                for message in guard_messages.iter() {
                     match message {
                         InternalMessage::InitUserConfig => {
                             // Fill connect fields from config.
@@ -219,8 +220,12 @@ impl Application for Silent {
                         }
                     }
                 }
-                guard.clear();
+                guard_messages.clear();
             }
+            MainMessage::ModalWindowMessage(message) => match message {
+                ModalMessage::OkButtonPressed => self.main_layout.hide_modal_window(),
+                ModalMessage::CloseModal => self.main_layout.hide_modal_window(),
+            },
             MainMessage::MessageFromMainLayout(message) => match message {
                 MainLayoutMessage::UserItemPressed(id) => {
                     self.main_layout.open_selected_user_info(id);
@@ -232,9 +237,14 @@ impl Application for Silent {
                     let message = self.main_layout.get_message_input();
                     if !message.is_empty() {
                         if let Err(msg) = self.net_service.send_user_message(message) {
-                            self.main_layout.add_system_message(msg);
+                            if msg.show_modal {
+                                self.main_layout.show_modal_window(msg.message);
+                            } else {
+                                self.main_layout.add_system_message(msg.message);
+                            }
+                        } else {
+                            self.main_layout.clear_message_input();
                         }
-                        self.main_layout.clear_message_input();
                     }
                 }
             },

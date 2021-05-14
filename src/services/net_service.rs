@@ -1,5 +1,6 @@
 // External.
 use bytevec::ByteDecodable;
+use chrono::prelude::*;
 use num_traits::FromPrimitive;
 
 // Std.
@@ -13,6 +14,11 @@ use crate::global_params::*;
 use crate::services::user_tcp_service::*;
 use crate::InternalMessage;
 
+pub struct ActionError {
+    pub message: String,
+    pub show_modal: bool,
+}
+
 pub struct ClientConfig {
     pub username: String,
     pub server_name: String,
@@ -23,12 +29,14 @@ pub struct ClientConfig {
 #[derive(Debug)]
 pub struct NetService {
     user_service: Arc<Mutex<UserTcpService>>,
+    last_time_text_message_sent: DateTime<Local>,
 }
 
 impl NetService {
     pub fn new() -> Self {
         Self {
             user_service: Arc::new(Mutex::new(UserTcpService::new())),
+            last_time_text_message_sent: Local::now(),
         }
     }
 
@@ -51,7 +59,15 @@ impl NetService {
             )
         });
     }
-    pub fn send_user_message(&mut self, message: String) -> Result<(), String> {
+    pub fn send_user_message(&mut self, message: String) -> Result<(), ActionError> {
+        let time_diff = Local::now() - self.last_time_text_message_sent;
+        if time_diff.num_seconds() < SPAM_PROTECTION_SEC as i64 {
+            return Err(ActionError {
+                message: String::from("You can't send messages that quick!"),
+                show_modal: true,
+            });
+        }
+
         match self
             .user_service
             .lock()
@@ -61,14 +77,22 @@ impl NetService {
             HandleMessageResult::Ok => {}
             HandleMessageResult::IOError(err) => match err {
                 IoResult::Err(msg) => {
-                    return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+                    return Err(ActionError {
+                        message: format!("{} at [{}, {}]", msg, file!(), line!()),
+                        show_modal: false,
+                    });
                 }
                 _ => {}
             },
             HandleMessageResult::OtherErr(msg) => {
-                return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+                return Err(ActionError {
+                    message: format!("{} at [{}, {}]", msg, file!(), line!()),
+                    show_modal: false,
+                });
             }
         }
+
+        self.last_time_text_message_sent = Local::now();
 
         Ok(())
     }

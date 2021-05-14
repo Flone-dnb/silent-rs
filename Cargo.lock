@@ -1329,6 +1329,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "iced_aw"
+version = "0.1.0"
+source = "git+https://github.com/iced-rs/iced_aw?branch=main#7a6918a50fa6784ce7d11348b71ea4331d9d6200"
+dependencies = [
+ "dodrio",
+ "iced_graphics",
+ "iced_native",
+ "iced_style",
+ "iced_web",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "iced_core"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2379,6 +2393,7 @@ dependencies = [
  "chrono",
  "futures",
  "iced",
+ "iced_aw",
  "iced_native",
  "num-derive",
  "num-traits",
