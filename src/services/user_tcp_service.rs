@@ -36,12 +36,14 @@ pub enum ServerMessage {
     UserDisconnected = 1,
     UserMessage = 2,
     UserEntersRoom = 3,
+    KeepAliveCheck = 4,
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
 pub enum ClientMessage {
     UserMessage = 0,
     EnterRoom = 1,
+    KeepAliveCheck = 2,
 }
 
 #[derive(Debug, PartialEq)]
@@ -386,6 +388,16 @@ impl UserTcpService {
         message: ServerMessage,
         internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
     ) -> HandleMessageResult {
+        if message == ServerMessage::KeepAliveCheck {
+            // resend this
+            if let Err(e) = self.send_keep_alive_check() {
+                return HandleMessageResult::IOError(e);
+            } else {
+                println!("keep alive ok");
+                return HandleMessageResult::Ok;
+            }
+        }
+
         let mut username = String::new();
         match self.read_u16_and_string_from_socket() {
             Ok(name) => username = name,
@@ -465,10 +477,12 @@ impl UserTcpService {
                         room_to: room,
                     });
             }
+            ServerMessage::KeepAliveCheck => {} // already checked this message above
         }
 
         HandleMessageResult::Ok
     }
+
     pub fn connect_user(
         &mut self,
         info_sender: std::sync::mpsc::Sender<ConnectInfo>,
@@ -783,6 +797,46 @@ impl UserTcpService {
         self.user_state = UserState::Connected;
 
         ConnectResult::Ok
+    }
+    fn send_keep_alive_check(&mut self) -> Result<(), IoResult> {
+        // Prepare data ID buffer.
+        let data_id = ClientMessage::KeepAliveCheck.to_u16();
+        if data_id.is_none() {
+            return Err(IoResult::Err(format!(
+                "ClientMessage::KeepAliveCheck.to_u16() failed at [{}, {}]",
+                file!(),
+                line!()
+            )));
+        }
+        let data_id = data_id.unwrap();
+        let data_id_buf = u16::encode::<u16>(&data_id);
+        if let Err(e) = data_id_buf {
+            return Err(IoResult::Err(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                data_id,
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let mut data_id_buf = data_id_buf.unwrap();
+
+        loop {
+            match self.write_to_socket(&mut data_id_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+                res => {
+                    return Err(res);
+                }
+            }
+        }
+
+        Ok(())
     }
     fn read_u16_and_string_from_socket(&mut self) -> Result<String, IoResult> {
         let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
