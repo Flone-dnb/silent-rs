@@ -44,13 +44,10 @@ impl UserInfo {
             )
             .height(Length::Shrink)
             .push(
-                Text::new(format!(
-                    "ping: {} ms.",
-                    self.user_data.ping_in_ms.to_string()
-                ))
-                .color(Color::WHITE)
-                .height(Length::Shrink)
-                .size(22),
+                Text::new(format!("ping: {} ms.", self.user_data.ping_ms.to_string()))
+                    .color(Color::WHITE)
+                    .height(Length::Shrink)
+                    .size(22),
             )
             .push(
                 Text::new(format!("connected: {}", _time_since_connected))

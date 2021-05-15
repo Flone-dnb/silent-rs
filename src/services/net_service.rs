@@ -12,6 +12,7 @@ use std::time::Duration;
 // Custom.
 use crate::global_params::*;
 use crate::services::user_tcp_service::*;
+use crate::services::user_udp_service::*;
 use crate::InternalMessage;
 
 pub struct ActionError {
@@ -70,10 +71,11 @@ impl NetService {
             }
         }
 
+        // Start TCP service.
         self.user_service = Arc::new(Mutex::new(UserTcpService::new(server_password)));
         let user_service_copy = Arc::clone(&self.user_service);
         thread::spawn(move || {
-            NetService::service(
+            NetService::tcp_service(
                 config,
                 username,
                 user_service_copy,
@@ -152,7 +154,7 @@ impl NetService {
         Ok(())
     }
 
-    fn service(
+    fn tcp_service(
         config: ClientConfig,
         username: String,
         user_service: Arc<Mutex<UserTcpService>>,
@@ -193,7 +195,7 @@ impl NetService {
         {
             let mut user_service_guard = user_service.lock().unwrap();
             user_service_guard.tcp_socket = Some(tcp_socket);
-            user_service_guard.user_info = UserInfo::new(username);
+            user_service_guard.user_info = UserInfo::new(username.clone());
         }
 
         // Connect.
@@ -206,9 +208,11 @@ impl NetService {
                     loop {
                         let received = receiver.recv().unwrap();
                         match received {
-                            ConnectInfo::UserInfo(user_info, room) => {
+                            ConnectInfo::UserInfo(user_info, room, ping_ms) => {
                                 connect_layout_sender
-                                    .send(ConnectResult::InfoAboutOtherUser(user_info, room))
+                                    .send(ConnectResult::InfoAboutOtherUser(
+                                        user_info, room, ping_ms,
+                                    ))
                                     .unwrap();
                                 connected_users += 1;
                             }
@@ -245,6 +249,22 @@ impl NetService {
                     return;
                 }
             }
+        }
+
+        // Start UDP service
+        {
+            let username_copy = username.clone();
+            let server_name_copy = config.server_name.clone();
+            let server_port_copy = config.server_port.clone();
+            let internam_messages_copy = Arc::clone(&internal_messages);
+            thread::spawn(move || {
+                NetService::udp_service(
+                    username_copy,
+                    server_name_copy,
+                    server_port_copy,
+                    internam_messages_copy,
+                )
+            });
         }
 
         // Read messages from server.
@@ -292,7 +312,7 @@ impl NetService {
                     return;
                 }
                 let message = message.unwrap() as u16;
-                let message_id = ServerMessage::from_u16(message);
+                let message_id = ServerMessageTcp::from_u16(message);
                 if message_id.is_none() {
                     _fin = true;
                     internal_messages
@@ -356,5 +376,79 @@ impl NetService {
             .lock()
             .unwrap()
             .push(InternalMessage::ClearAllUsers);
+    }
+    fn udp_service(
+        username: String,
+        server_name: String,
+        server_port: String,
+        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+    ) {
+        let udp_socket = UdpSocket::bind("127.0.0.1:0"); // random port
+        if let Err(e) = udp_socket {
+            internal_messages
+                .lock()
+                .unwrap()
+                .push(InternalMessage::SystemIOError(format!(
+                    "UdpSocket::bind() failed, error: {}, at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                )));
+            return;
+        }
+        let udp_socket = udp_socket.unwrap();
+
+        if let Err(e) = udp_socket.set_nonblocking(true) {
+            internal_messages
+                .lock()
+                .unwrap()
+                .push(InternalMessage::SystemIOError(format!(
+                    "udp_socket.set_nonblocking() failed, error: {}, at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                )));
+            return;
+        }
+
+        if let Err(e) = udp_socket.connect(format!("{}:{}", server_name, server_port)) {
+            internal_messages
+                .lock()
+                .unwrap()
+                .push(InternalMessage::SystemIOError(format!(
+                    "udp_socket.connect() failed, error: {}, at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                )));
+            return;
+        }
+
+        let mut user_udp_service = UserUdpService::new();
+        match user_udp_service.connect(&udp_socket, &username) {
+            Ok(ping_ms) => {
+                internal_messages
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::UserPing {
+                        username: username.clone(),
+                        ping_ms,
+                    });
+            }
+            Err(msg) => {
+                internal_messages
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::SystemIOError(format!(
+                        "{}, at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+            }
+        }
+
+        // use 'recv' and 'send'
+        // Ready.
     }
 }

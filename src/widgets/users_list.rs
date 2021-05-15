@@ -69,14 +69,19 @@ impl UserList {
 
         self.rooms.push_back(RoomItem::new(room_name));
     }
-    pub fn add_user(&mut self, username: String, room_name: String) -> Result<(), String> {
+    pub fn add_user(
+        &mut self,
+        username: String,
+        room_name: String,
+        ping_ms: u16,
+    ) -> Result<(), String> {
         let _process_guard = self.process_lock.lock().unwrap();
 
         if room_name == "" {
             // Add to first room (lobby).
             let front = self.rooms.front_mut();
             if front.is_some() {
-                front.unwrap().add_user(username.clone());
+                front.unwrap().add_user(username.clone(), ping_ms);
             } else {
                 return Err(format!("An error occurred at UserList::add_user(), error: room with name '{}' not found at [{}, {}]", room_name, file!(), line!()));
             }
@@ -87,13 +92,25 @@ impl UserList {
                 .iter_mut()
                 .find(|room_info| room_info.room_data.name == room_name);
             if room_entry.is_some() {
-                room_entry.unwrap().add_user(username);
+                room_entry.unwrap().add_user(username, ping_ms);
             } else {
                 return Err(format!("An error occurred at UserList::add_user(), error: room with name '{}' not found at [{}, {}]", room_name, file!(), line!()));
             }
         }
 
         Ok(())
+    }
+    pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) {
+        let _process_guard = self.process_lock.lock().unwrap();
+
+        for room in self.rooms.iter_mut() {
+            for user in room.users.iter_mut() {
+                if user.user_data.username == username {
+                    user.user_data.ping_ms = ping_ms;
+                    return;
+                }
+            }
+        }
     }
     pub fn move_user(
         &mut self,
@@ -117,6 +134,9 @@ impl UserList {
                     removed = true;
                     break;
                 }
+            }
+            if removed {
+                break;
             }
         }
 
@@ -230,8 +250,8 @@ impl RoomItem {
             button_state: button::State::default(),
         }
     }
-    pub fn add_user(&mut self, username: String) {
-        self.users.push_back(UserItem::new(username));
+    pub fn add_user(&mut self, username: String, ping_ms: u16) {
+        self.users.push_back(UserItem::new(username, ping_ms));
     }
     pub fn add_user_from_user_data(&mut self, user_data: UserItemData) {
         self.users.push_back(UserItem::new_from_data(user_data))
@@ -273,11 +293,11 @@ pub struct UserItem {
 }
 
 impl UserItem {
-    pub fn new(username: String) -> Self {
+    pub fn new(username: String, ping_ms: u16) -> Self {
         UserItem {
             user_data: UserItemData {
                 username,
-                ping_in_ms: 0,
+                ping_ms,
                 connected_time_point: Local::now(),
             },
             button_state: button::State::default(),
@@ -300,17 +320,15 @@ impl UserItem {
                     .width(Length::Shrink),
             )
             .push(
-                Text::new(
-                    String::from("  [") + &self.user_data.ping_in_ms.to_string()[..] + " ms]",
-                )
-                .color(Color::from_rgb(
-                    128_f32 / 255.0,
-                    128_f32 / 255.0,
-                    128_f32 / 255.0,
-                ))
-                .size(17)
-                .horizontal_alignment(HorizontalAlignment::Left)
-                .width(Length::Shrink),
+                Text::new(String::from("  [") + &self.user_data.ping_ms.to_string()[..] + " ms]")
+                    .color(Color::from_rgb(
+                        128_f32 / 255.0,
+                        128_f32 / 255.0,
+                        128_f32 / 255.0,
+                    ))
+                    .size(17)
+                    .horizontal_alignment(HorizontalAlignment::Left)
+                    .width(Length::Shrink),
             );
         Button::new(&mut self.button_state, content)
             .width(Length::Fill)
@@ -324,7 +342,7 @@ impl UserItem {
 #[derive(Debug)]
 pub struct UserItemData {
     pub username: String,
-    pub ping_in_ms: i32,
+    pub ping_ms: u16,
     pub connected_time_point: DateTime<Local>,
 }
 
@@ -332,7 +350,7 @@ impl Clone for UserItemData {
     fn clone(&self) -> Self {
         UserItemData {
             username: self.username.clone(),
-            ping_in_ms: self.ping_in_ms,
+            ping_ms: self.ping_ms,
             connected_time_point: self.connected_time_point,
         }
     }
@@ -342,7 +360,7 @@ impl UserItemData {
     pub fn empty() -> Self {
         UserItemData {
             username: String::from(""),
-            ping_in_ms: 0,
+            ping_ms: 0,
             connected_time_point: Local::now(),
         }
     }

@@ -86,6 +86,7 @@ pub enum InternalMessage {
     UserConnected(String),
     UserDisconnected(String),
     MoveUserToRoom { username: String, room_to: String },
+    UserPing { username: String, ping_ms: u16 },
 }
 
 #[derive(Debug, Clone)]
@@ -213,6 +214,9 @@ impl Application for Silent {
                                 }
                             }
                         }
+                        InternalMessage::UserPing { username, ping_ms } => {
+                            self.main_layout.set_user_ping(username, *ping_ms);
+                        }
                         InternalMessage::UserMessage { username, message } => {
                             self.main_layout
                                 .add_message(message.clone(), username.clone());
@@ -224,10 +228,12 @@ impl Application for Silent {
                             self.main_layout.clear_all_users();
                         }
                         InternalMessage::UserConnected(username) => {
-                            if let Err(msg) =
-                                self.main_layout
-                                    .add_user(username.clone(), String::from(""), false)
-                            {
+                            if let Err(msg) = self.main_layout.add_user(
+                                username.clone(),
+                                String::from(""),
+                                0,
+                                false,
+                            ) {
                                 self.main_layout.add_system_message(format!(
                                     "{} at [{}, {}]",
                                     msg,
@@ -346,6 +352,7 @@ impl Application for Silent {
                                     if let Err(msg) = self.main_layout.add_user(
                                         self.connect_layout.username_string.clone(),
                                         String::from(""),
+                                        0,
                                         true,
                                     ) {
                                         self.main_layout.add_system_message(format!(
@@ -371,10 +378,13 @@ impl Application for Silent {
                                     }
                                     break;
                                 }
-                                ConnectResult::InfoAboutOtherUser(user_info, room) => {
-                                    if let Err(msg) =
-                                        self.main_layout.add_user(user_info.username, room, true)
-                                    {
+                                ConnectResult::InfoAboutOtherUser(user_info, room, ping_ms) => {
+                                    if let Err(msg) = self.main_layout.add_user(
+                                        user_info.username,
+                                        room,
+                                        ping_ms,
+                                        true,
+                                    ) {
                                         self.main_layout.add_system_message(format!(
                                             "{} at [{}, {}]",
                                             msg,

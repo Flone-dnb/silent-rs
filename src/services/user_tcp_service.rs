@@ -31,16 +31,17 @@ enum ConnectServerAnswer {
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
-pub enum ServerMessage {
+pub enum ServerMessageTcp {
     UserConnected = 0,
     UserDisconnected = 1,
     UserMessage = 2,
     UserEntersRoom = 3,
     KeepAliveCheck = 4,
+    UserPing = 5,
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
-pub enum ClientMessage {
+pub enum ClientMessageTcp {
     UserMessage = 0,
     EnterRoom = 1,
     KeepAliveCheck = 2,
@@ -66,12 +67,12 @@ pub enum ConnectResult {
         message: String,
         sleep_in_sec: usize,
     },
-    InfoAboutOtherUser(UserInfo, String),
+    InfoAboutOtherUser(UserInfo, String, u16),
     InfoAboutRoom(String),
 }
 
 pub enum ConnectInfo {
-    UserInfo(UserInfo, String),
+    UserInfo(UserInfo, String, u16),
     RoomInfo(String),
     End,
 }
@@ -127,7 +128,7 @@ impl UserTcpService {
         // (size) - room name
 
         // Prepare data ID buffer.
-        let data_id = ClientMessage::EnterRoom.to_u16();
+        let data_id = ClientMessageTcp::EnterRoom.to_u16();
         if data_id.is_none() {
             return HandleMessageResult::OtherErr(format!(
                 "ClientMessage::EnterRoom.to_u16() failed at [{}, {}]",
@@ -222,7 +223,7 @@ impl UserTcpService {
         // (size) - message
 
         // Prepare data ID buffer.
-        let data_id = ClientMessage::UserMessage.to_u16();
+        let data_id = ClientMessageTcp::UserMessage.to_u16();
         if data_id.is_none() {
             return HandleMessageResult::OtherErr(format!(
                 "ClientMessage::UserMessage.to_u16() failed at [{}, {}]",
@@ -385,10 +386,10 @@ impl UserTcpService {
     }
     pub fn handle_message(
         &mut self,
-        message: ServerMessage,
+        message: ServerMessageTcp,
         internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
     ) -> HandleMessageResult {
-        if message == ServerMessage::KeepAliveCheck {
+        if message == ServerMessageTcp::KeepAliveCheck {
             // resend this
             if let Err(e) = self.send_keep_alive_check() {
                 return HandleMessageResult::IOError(e);
@@ -416,19 +417,19 @@ impl UserTcpService {
         }
 
         match message {
-            ServerMessage::UserConnected => {
+            ServerMessageTcp::UserConnected => {
                 internal_messages_ok_only
                     .lock()
                     .unwrap()
                     .push(InternalMessage::UserConnected(username));
             }
-            ServerMessage::UserDisconnected => {
+            ServerMessageTcp::UserDisconnected => {
                 internal_messages_ok_only
                     .lock()
                     .unwrap()
                     .push(InternalMessage::UserDisconnected(username));
             }
-            ServerMessage::UserMessage => {
+            ServerMessageTcp::UserMessage => {
                 let mut message = String::new();
                 match self.read_u16_and_string_from_socket() {
                     Ok(name) => message = name,
@@ -451,7 +452,35 @@ impl UserTcpService {
                     .unwrap()
                     .push(InternalMessage::UserMessage { username, message });
             }
-            ServerMessage::UserEntersRoom => {
+            ServerMessageTcp::UserPing => {
+                let mut ping_buf = vec![0u8; std::mem::size_of::<u16>()];
+                loop {
+                    match self.read_from_socket(&mut ping_buf) {
+                        IoResult::WouldBlock => {
+                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                            continue;
+                        }
+                        IoResult::Ok(_bytes) => break,
+                        res => return HandleMessageResult::IOError(res),
+                    }
+                }
+                let ping_ms = u16::decode::<u16>(&ping_buf);
+                if let Err(e) = ping_ms {
+                    return HandleMessageResult::IOError(IoResult::Err(format!(
+                        "u16::decode::<u16>() failed, error: {} at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    )));
+                }
+                let ping_ms = ping_ms.unwrap();
+
+                internal_messages_ok_only
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::UserPing { username, ping_ms });
+            }
+            ServerMessageTcp::UserEntersRoom => {
                 let mut room = String::new();
                 match self.read_u8_and_string_from_socket() {
                     Ok(name) => room = name,
@@ -477,7 +506,7 @@ impl UserTcpService {
                         room_to: room,
                     });
             }
-            ServerMessage::KeepAliveCheck => {} // already checked this message above
+            ServerMessageTcp::KeepAliveCheck => {} // already checked this message above
         }
 
         HandleMessageResult::Ok
@@ -759,8 +788,10 @@ impl UserTcpService {
             let room_len = u8::decode::<u8>(&room_len_buf);
             if let Err(e) = room_len {
                 return ConnectResult::Err(format!(
-                    "u16::decode::<u8>() failed, error: failed to decode on 'room_len_buf' (error: {}) at [{}, {}]",
-                    e, file!(), line!()
+                    "u16::decode::<u8>() failed, error: {} at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
                 ));
             }
             let room_len = room_len.unwrap();
@@ -780,14 +811,38 @@ impl UserTcpService {
             let room_name = std::str::from_utf8(&room_buf);
             if let Err(e) = room_name {
                 return ConnectResult::Err(
-                    format!("std::str::from_utf8() failed, error: failed to convert on 'room_buf' (error: {}) at [{}, {}]",
+                    format!("std::str::from_utf8() failed, error: failed to convert (error: {}) at [{}, {}]",
                     e, file!(), line!()));
             }
+
+            // Read ping.
+            let mut ping_buf = vec![0u8; std::mem::size_of::<u16>()];
+            loop {
+                match self.read_from_socket(&mut ping_buf) {
+                    IoResult::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                        continue;
+                    }
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::IoErr(res),
+                }
+            }
+            let ping_ms = u16::decode::<u16>(&ping_buf);
+            if let Err(e) = ping_ms {
+                return ConnectResult::Err(format!(
+                    "u16::decode::<u16>() failed, error: {}, at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                ));
+            }
+            let ping_ms = ping_ms.unwrap();
 
             info_sender
                 .send(ConnectInfo::UserInfo(
                     UserInfo::new(String::from(username.unwrap())),
                     String::from(room_name.unwrap()),
+                    ping_ms,
                 ))
                 .unwrap();
         }
@@ -800,7 +855,7 @@ impl UserTcpService {
     }
     fn send_keep_alive_check(&mut self) -> Result<(), IoResult> {
         // Prepare data ID buffer.
-        let data_id = ClientMessage::KeepAliveCheck.to_u16();
+        let data_id = ClientMessageTcp::KeepAliveCheck.to_u16();
         if data_id.is_none() {
             return Err(IoResult::Err(format!(
                 "ClientMessage::KeepAliveCheck.to_u16() failed at [{}, {}]",

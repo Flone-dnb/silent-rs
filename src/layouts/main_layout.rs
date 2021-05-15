@@ -89,6 +89,9 @@ impl MainLayout {
     pub fn get_message_input(&self) -> String {
         self.message_string.clone()
     }
+    pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) {
+        self.users_list.set_user_ping(username, ping_ms);
+    }
     pub fn clear_message_input(&mut self) {
         self.message_string.clear();
     }
@@ -99,6 +102,7 @@ impl MainLayout {
         &mut self,
         username: String,
         room: String,
+        ping_ms: u16,
         dont_show_notice: bool,
     ) -> Result<(), String> {
         if !dont_show_notice {
@@ -114,7 +118,7 @@ impl MainLayout {
             }
         }
 
-        let res = self.users_list.add_user(username, room);
+        let res = self.users_list.add_user(username, room, ping_ms);
         if let Err(msg) = res {
             return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
         }
