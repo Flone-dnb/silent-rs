@@ -171,14 +171,21 @@ impl NetService {
                     let mut connected_users = 0usize;
                     loop {
                         let received = receiver.recv().unwrap();
-                        if let Some(user_info) = received {
-                            connect_layout_sender
-                                .send(ConnectResult::InfoAboutOtherUser(user_info))
-                                .unwrap();
-                            connected_users += 1;
-                        } else {
-                            // End.
-                            break;
+                        match received {
+                            ConnectInfo::UserInfo(user_info, room) => {
+                                connect_layout_sender
+                                    .send(ConnectResult::InfoAboutOtherUser(user_info, room))
+                                    .unwrap();
+                                connected_users += 1;
+                            }
+                            ConnectInfo::RoomInfo(room_name) => {
+                                connect_layout_sender
+                                    .send(ConnectResult::InfoAboutRoom(room_name))
+                                    .unwrap();
+                            }
+                            ConnectInfo::End => {
+                                break;
+                            }
                         }
                     }
                     connect_layout_sender.send(ConnectResult::Ok).unwrap();

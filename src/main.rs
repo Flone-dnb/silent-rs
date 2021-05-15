@@ -1,3 +1,5 @@
+#![feature(linked_list_remove)]
+
 // External.
 use chrono::prelude::*;
 use iced::{
@@ -212,7 +214,17 @@ impl Application for Silent {
                             self.main_layout.clear_all_users();
                         }
                         InternalMessage::UserConnected(username) => {
-                            self.main_layout.add_user(username.clone(), false);
+                            if let Err(msg) =
+                                self.main_layout
+                                    .add_user(username.clone(), String::from(""), false)
+                            {
+                                self.main_layout.add_system_message(format!(
+                                    "{} at [{}, {}]",
+                                    msg,
+                                    file!(),
+                                    line!()
+                                ));
+                            }
                         }
                         InternalMessage::UserDisconnected(username) => {
                             if let Err(msg) = self.main_layout.remove_user(username.clone()) {
@@ -228,8 +240,11 @@ impl Application for Silent {
                 ModalMessage::CloseModal => self.main_layout.hide_modal_window(),
             },
             MainMessage::MessageFromMainLayout(message) => match message {
-                MainLayoutMessage::UserItemPressed(id) => {
-                    self.main_layout.open_selected_user_info(id);
+                MainLayoutMessage::UserItemPressed(username) => {
+                    self.main_layout.open_selected_user_info(username);
+                }
+                MainLayoutMessage::RoomItemPressed(room_name) => {
+                    //todo;
                 }
                 MainLayoutMessage::HideUserInfoPressed => {
                     self.main_layout.hide_user_info();
@@ -308,10 +323,18 @@ impl Application for Silent {
                             match received {
                                 ConnectResult::Ok => {
                                     self.connect_layout.set_connect_result(ConnectResult::Ok);
-                                    self.main_layout.add_user(
+                                    if let Err(msg) = self.main_layout.add_user(
                                         self.connect_layout.username_string.clone(),
+                                        String::from(""),
                                         true,
-                                    );
+                                    ) {
+                                        self.main_layout.add_system_message(format!(
+                                            "{} at [{}, {}]",
+                                            msg,
+                                            file!(),
+                                            line!()
+                                        ));
+                                    }
                                     self.current_window_layout = WindowLayout::MainWindow;
                                     self.is_connected = true;
 
@@ -326,8 +349,20 @@ impl Application for Silent {
                                     }
                                     break;
                                 }
-                                ConnectResult::InfoAboutOtherUser(user_info) => {
-                                    self.main_layout.add_user(user_info.username, true);
+                                ConnectResult::InfoAboutOtherUser(user_info, room) => {
+                                    if let Err(msg) =
+                                        self.main_layout.add_user(user_info.username, room, true)
+                                    {
+                                        self.main_layout.add_system_message(format!(
+                                            "{} at [{}, {}]",
+                                            msg,
+                                            file!(),
+                                            line!()
+                                        ));
+                                    }
+                                }
+                                ConnectResult::InfoAboutRoom(room_name) => {
+                                    self.main_layout.add_room(room_name);
                                 }
                                 ConnectResult::SleepWithErr {
                                     message,

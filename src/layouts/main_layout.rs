@@ -33,7 +33,8 @@ pub enum ModalMessage {
 pub enum MainLayoutMessage {
     MessageInputEnterPressed,
     HideUserInfoPressed,
-    UserItemPressed(usize),
+    UserItemPressed(String),
+    RoomItemPressed(String),
 }
 
 #[derive(Debug, Default)]
@@ -61,8 +62,8 @@ impl MainLayout {
     pub fn hide_modal_window(&mut self) {
         self.modal_state.show(false);
     }
-    pub fn open_selected_user_info(&mut self, id: usize) {
-        self.users_list.open_selected_user_info(id);
+    pub fn open_selected_user_info(&mut self, username: String) {
+        self.users_list.open_selected_user_info(username);
     }
     pub fn hide_user_info(&mut self) {
         self.users_list.hide_user_info();
@@ -73,11 +74,14 @@ impl MainLayout {
     pub fn clear_message_input(&mut self) {
         self.message_string.clear();
     }
-    pub fn add_user(&mut self, username: String, dont_show_notice: bool) {
-        self.users_list.add_user(username.clone());
-        self.connected_users = self.users_list.get_user_count();
+    pub fn add_user(
+        &mut self,
+        username: String,
+        room: String,
+        dont_show_notice: bool,
+    ) -> Result<(), String> {
         if !dont_show_notice {
-            self.add_info_message(format!("{} just connected to the chat.", username));
+            self.add_info_message(format!("{} just connected to the chat.", &username));
             thread::spawn(move || {
                 let mut audio = Audio::new();
                 audio.add("sound", CONNECTED_SOUND_PATH);
@@ -85,6 +89,17 @@ impl MainLayout {
                 audio.wait(); // Block until sounds finish playing
             });
         }
+
+        let res = self.users_list.add_user(username, room);
+        if let Err(msg) = res {
+            return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
+        }
+        self.connected_users = self.users_list.get_user_count();
+
+        Ok(())
+    }
+    pub fn add_room(&mut self, room_name: String) {
+        self.users_list.add_room(room_name);
     }
     pub fn remove_user(&mut self, username: String) -> Result<(), String> {
         match self.users_list.remove_user(username.clone()) {

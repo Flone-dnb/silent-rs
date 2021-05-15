@@ -62,7 +62,14 @@ pub enum ConnectResult {
         message: String,
         sleep_in_sec: usize,
     },
-    InfoAboutOtherUser(UserInfo),
+    InfoAboutOtherUser(UserInfo, String),
+    InfoAboutRoom(String),
+}
+
+pub enum ConnectInfo {
+    UserInfo(UserInfo, String),
+    RoomInfo(String),
+    End,
 }
 
 #[derive(Debug, PartialEq)]
@@ -341,7 +348,7 @@ impl UserTcpService {
     }
     pub fn connect_user(
         &mut self,
-        info_sender: std::sync::mpsc::Sender<Option<UserInfo>>,
+        info_sender: std::sync::mpsc::Sender<ConnectInfo>,
     ) -> ConnectResult {
         // Prepare initial send buffer:
         // (u16): size of the version string,
@@ -467,6 +474,75 @@ impl UserTcpService {
         }
 
         // Ok.
+        // Read info about all rooms.
+        // Read room count.
+        let mut room_count_buf = vec![0u8; std::mem::size_of::<u16>()];
+        loop {
+            match self.read_from_socket(&mut room_count_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                res => return ConnectResult::IoErr(res),
+            }
+        }
+        let room_count = u16::decode::<u16>(&room_count_buf);
+        if let Err(e) = room_count {
+            return ConnectResult::Err(format!(
+                "u64::decode::<u16>() failed, error: failed to decode on 'room_count_buf' (error: {}) at [{}, {}]",
+                e, file!(), line!()
+            ));
+        }
+        let room_count = room_count.unwrap();
+
+        // Read rooms.
+        for _ in 0..room_count {
+            // Read room name len.
+            let mut room_len_buf = vec![0u8; std::mem::size_of::<u8>()];
+            loop {
+                match self.read_from_socket(&mut room_len_buf) {
+                    IoResult::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                        continue;
+                    }
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::IoErr(res),
+                }
+            }
+            let room_len = u8::decode::<u8>(&room_len_buf);
+            if let Err(e) = room_len {
+                return ConnectResult::Err(format!(
+                    "u16::decode::<u8>() failed, error: failed to decode on 'room_len_buf' (error: {}) at [{}, {}]",
+                    e, file!(), line!()
+                ));
+            }
+            let room_len = room_len.unwrap();
+
+            // Read room.
+            let mut room_buf = vec![0u8; room_len as usize];
+            loop {
+                match self.read_from_socket(&mut room_buf) {
+                    IoResult::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                        continue;
+                    }
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::IoErr(res),
+                }
+            }
+            let room_name = std::str::from_utf8(&room_buf);
+            if let Err(e) = room_name {
+                return ConnectResult::Err(
+                    format!("std::str::from_utf8() failed, error: failed to convert on 'room_buf' (error: {}) at [{}, {}]",
+                    e, file!(), line!()));
+            }
+
+            info_sender
+                .send(ConnectInfo::RoomInfo(String::from(room_name.unwrap())))
+                .unwrap();
+        }
+
         // Read info about other users.
         // Read user count.
         let mut users_count_buf = vec![0u8; std::mem::size_of::<u64>()];
@@ -531,12 +607,55 @@ impl UserTcpService {
                     e, file!(), line!()));
             }
 
+            // Read room name len.
+            let mut room_len_buf = vec![0u8; std::mem::size_of::<u8>()];
+            loop {
+                match self.read_from_socket(&mut room_len_buf) {
+                    IoResult::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                        continue;
+                    }
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::IoErr(res),
+                }
+            }
+            let room_len = u8::decode::<u8>(&room_len_buf);
+            if let Err(e) = room_len {
+                return ConnectResult::Err(format!(
+                    "u16::decode::<u8>() failed, error: failed to decode on 'room_len_buf' (error: {}) at [{}, {}]",
+                    e, file!(), line!()
+                ));
+            }
+            let room_len = room_len.unwrap();
+
+            // Read room.
+            let mut room_buf = vec![0u8; room_len as usize];
+            loop {
+                match self.read_from_socket(&mut room_buf) {
+                    IoResult::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                        continue;
+                    }
+                    IoResult::Ok(_) => break,
+                    res => return ConnectResult::IoErr(res),
+                }
+            }
+            let room_name = std::str::from_utf8(&room_buf);
+            if let Err(e) = room_name {
+                return ConnectResult::Err(
+                    format!("std::str::from_utf8() failed, error: failed to convert on 'room_buf' (error: {}) at [{}, {}]",
+                    e, file!(), line!()));
+            }
+
             info_sender
-                .send(Some(UserInfo::new(String::from(username.unwrap()))))
+                .send(ConnectInfo::UserInfo(
+                    UserInfo::new(String::from(username.unwrap())),
+                    String::from(room_name.unwrap()),
+                ))
                 .unwrap();
         }
 
-        info_sender.send(None).unwrap(); // End.
+        info_sender.send(ConnectInfo::End).unwrap(); // End.
 
         self.user_state = UserState::Connected;
 
