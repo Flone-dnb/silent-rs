@@ -51,6 +51,9 @@ impl ChatList {
             .padding(10)
             .style(current_style.theme)
     }
+    pub fn clear_text_chat(&mut self) {
+        self.messages.clear();
+    }
     pub fn add_info_message(&mut self, message: String) {
         self.messages.push_back(ChatMessage::new(
             message,

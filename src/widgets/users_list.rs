@@ -4,12 +4,15 @@ use iced::{
     button, scrollable, Button, Color, Column, Container, HorizontalAlignment, Length, Row,
     Scrollable, Text,
 };
+use rusty_audio::Audio;
 
 // Std.
 use std::collections::LinkedList;
 use std::sync::Mutex;
+use std::thread;
 
 // Custom.
+use crate::global_params::*;
 use crate::layouts::main_layout::MainLayoutMessage;
 use crate::themes::*;
 use crate::widgets::user_info::*;
@@ -92,12 +95,79 @@ impl UserList {
 
         Ok(())
     }
-    pub fn remove_user(&mut self, username: String) -> Result<(), String> {
+    pub fn move_user(
+        &mut self,
+        username: &str,
+        room_to: &str,
+        current_user_name: &str,
+        current_user_room: &str,
+    ) -> Result<(), String> {
+        let _process_guard = self.process_lock.lock().unwrap();
+
+        let mut removed = false;
+        let mut removed_from_room = String::new();
+        let mut user_data_clone = UserItemData::empty();
+
+        for room in self.rooms.iter_mut() {
+            for (i, user) in room.users.iter_mut().enumerate() {
+                if user.user_data.username == username {
+                    removed_from_room = room.room_data.name.clone();
+                    user_data_clone = user.user_data.clone();
+                    room.users.remove(i);
+                    removed = true;
+                    break;
+                }
+            }
+        }
+
+        if !removed {
+            return Err(format!(
+                "An error occurred at UserList::move_user(), error: can't find user with name '{}' at [{}, {}]",
+                username, file!(), line!()));
+        }
+
+        // Find room with this name
+        let room_entry = self
+            .rooms
+            .iter_mut()
+            .find(|room_info| room_info.room_data.name == room_to);
+        if room_entry.is_some() {
+            room_entry.unwrap().add_user_from_user_data(user_data_clone);
+        } else {
+            return Err(format!("An error occurred at UserList::move_user(), error: room with name '{}' not found at [{}, {}]", room_to, file!(), line!()));
+        }
+
+        if username != current_user_name {
+            if room_to == current_user_room {
+                thread::spawn(move || {
+                    let mut audio = Audio::new();
+                    audio.add("sound", CONNECTED_SOUND_PATH);
+                    audio.play("sound"); // Execution continues while playback occurs in another thread.
+                    audio.wait(); // Block until sounds finish playing
+                });
+            } else if removed_from_room == current_user_room {
+                thread::spawn(move || {
+                    let mut audio = Audio::new();
+                    audio.add("sound", DISCONNECT_SOUND_PATH);
+                    audio.play("sound"); // Execution continues while playback occurs in another thread.
+                    audio.wait(); // Block until sounds finish playing
+                });
+            }
+        }
+
+        Ok(())
+    }
+    pub fn remove_user(
+        &mut self,
+        username: &str,
+        removed_user_room: &mut String,
+    ) -> Result<(), String> {
         let _process_guard = self.process_lock.lock().unwrap();
 
         for room in self.rooms.iter_mut() {
             for (i, user) in room.users.iter_mut().enumerate() {
                 if user.user_data.username == username {
+                    *removed_user_room = room.room_data.name.clone();
                     room.users.remove(i);
                     return Ok(());
                 }
@@ -163,6 +233,9 @@ impl RoomItem {
     pub fn add_user(&mut self, username: String) {
         self.users.push_back(UserItem::new(username));
     }
+    pub fn add_user_from_user_data(&mut self, user_data: UserItemData) {
+        self.users.push_back(UserItem::new_from_data(user_data))
+    }
     pub fn get_ui(&mut self) -> Column<MainMessage> {
         let room_row = Row::new().push(
             Text::new(&self.room_data.name)
@@ -207,6 +280,12 @@ impl UserItem {
                 ping_in_ms: 0,
                 connected_time_point: Local::now(),
             },
+            button_state: button::State::default(),
+        }
+    }
+    pub fn new_from_data(user_data: UserItemData) -> Self {
+        UserItem {
+            user_data,
             button_state: button::State::default(),
         }
     }

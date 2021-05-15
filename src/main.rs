@@ -85,6 +85,7 @@ pub enum InternalMessage {
     ClearAllUsers,
     UserConnected(String),
     UserDisconnected(String),
+    MoveUserToRoom { username: String, room_to: String },
 }
 
 #[derive(Debug, Clone)]
@@ -203,6 +204,15 @@ impl Application for Silent {
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
                         }
+                        InternalMessage::MoveUserToRoom { username, room_to } => {
+                            if let Err(msg) = self.main_layout.move_user(&username, &room_to) {
+                                self.main_layout.add_system_message(msg);
+                            } else {
+                                if *username == self.main_layout.current_user_name {
+                                    self.main_layout.clear_text_chat();
+                                }
+                            }
+                        }
                         InternalMessage::UserMessage { username, message } => {
                             self.main_layout
                                 .add_message(message.clone(), username.clone());
@@ -227,7 +237,7 @@ impl Application for Silent {
                             }
                         }
                         InternalMessage::UserDisconnected(username) => {
-                            if let Err(msg) = self.main_layout.remove_user(username.clone()) {
+                            if let Err(msg) = self.main_layout.remove_user(&username) {
                                 self.main_layout.add_system_message(msg);
                             }
                         }
@@ -244,7 +254,17 @@ impl Application for Silent {
                     self.main_layout.open_selected_user_info(username);
                 }
                 MainLayoutMessage::RoomItemPressed(room_name) => {
-                    //todo;
+                    if self.main_layout.current_user_room != room_name {
+                        if let Err(msg) = self.net_service.enter_room(&room_name) {
+                            if msg.show_modal {
+                                self.main_layout.show_modal_window(msg.message);
+                            } else {
+                                self.main_layout.add_system_message(msg.message);
+                            }
+                        } else {
+                            self.main_layout.current_user_room = room_name;
+                        }
+                    }
                 }
                 MainLayoutMessage::HideUserInfoPressed => {
                     self.main_layout.hide_user_info();
@@ -335,6 +355,8 @@ impl Application for Silent {
                                             line!()
                                         ));
                                     }
+                                    self.main_layout.current_user_name =
+                                        self.connect_layout.username_string.clone();
                                     self.current_window_layout = WindowLayout::MainWindow;
                                     self.is_connected = true;
 

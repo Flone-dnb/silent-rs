@@ -35,11 +35,13 @@ pub enum ServerMessage {
     UserConnected = 0,
     UserDisconnected = 1,
     UserMessage = 2,
+    UserEntersRoom = 3,
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
 pub enum ClientMessage {
     UserMessage = 0,
+    EnterRoom = 1,
 }
 
 #[derive(Debug, PartialEq)]
@@ -107,6 +109,101 @@ impl UserTcpService {
             },
             io_tcp_mutex: Mutex::new(()),
         }
+    }
+    pub fn enter_room(&mut self, room: &str) -> HandleMessageResult {
+        if self.tcp_socket.is_none() {
+            return HandleMessageResult::OtherErr(format!(
+                "UserNetService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
+            ));
+        }
+
+        // Send data:
+        // (u16) - data ID (enter room)
+        // (u16) - username.len()
+        // (size) - username
+        // (u8) - room.len()
+        // (size) - room name
+
+        // Prepare data ID buffer.
+        let data_id = ClientMessage::EnterRoom.to_u16();
+        if data_id.is_none() {
+            return HandleMessageResult::OtherErr(format!(
+                "ClientMessage::EnterRoom.to_u16() failed at [{}, {}]",
+                file!(),
+                line!()
+            ));
+        }
+        let data_id = data_id.unwrap();
+        let data_id_buf = u16::encode::<u16>(&data_id);
+        if let Err(e) = data_id_buf {
+            return HandleMessageResult::OtherErr(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                data_id,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut data_id_buf = data_id_buf.unwrap();
+
+        // Prepare username len buffer.
+        let username_len = self.user_info.username.len() as u16;
+        let username_len_buf = u16::encode::<u16>(&username_len);
+        if let Err(e) = username_len_buf {
+            return HandleMessageResult::OtherErr(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                username_len,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut username_len_buf = username_len_buf.unwrap();
+
+        // Prepare username buffer.
+        let mut username_buf = Vec::from(self.user_info.username.as_bytes());
+
+        // Prepare room name len buffer.
+        let room_name_len = room.len() as u8;
+        let room_len_buf = u8::encode::<u8>(&room_name_len);
+        if let Err(e) = room_len_buf {
+            return HandleMessageResult::OtherErr(format!(
+                "u16::encode::<u8>() failed on value {}, error: {} at [{}, {}]",
+                username_len,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut room_len_buf = room_len_buf.unwrap();
+
+        // Prepare username buffer.
+        let mut room_buf = Vec::from(room.as_bytes());
+
+        // Merge all to one buffer.
+        let mut out_buffer: Vec<u8> = Vec::new();
+        out_buffer.append(&mut data_id_buf);
+        out_buffer.append(&mut username_len_buf);
+        out_buffer.append(&mut username_buf);
+        out_buffer.append(&mut room_len_buf);
+        out_buffer.append(&mut room_buf);
+
+        // Send to server.
+        loop {
+            match self.write_to_socket(&mut out_buffer) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_bytes) => break,
+                res => return HandleMessageResult::IOError(res),
+            }
+        }
+
+        // TODO: wait for result (if password and etc.)
+        // return Err if not entered!!! (see main.rs at 'MainLayoutMessage::RoomItemPressed')
+
+        HandleMessageResult::Ok
     }
     pub fn send_user_text_message(&mut self, message: String) -> HandleMessageResult {
         if self.tcp_socket.is_none() {
@@ -341,6 +438,32 @@ impl UserTcpService {
                     .lock()
                     .unwrap()
                     .push(InternalMessage::UserMessage { username, message });
+            }
+            ServerMessage::UserEntersRoom => {
+                let mut room = String::new();
+                match self.read_u8_and_string_from_socket() {
+                    Ok(name) => room = name,
+                    Err(io_e) => match io_e {
+                        IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
+                        IoResult::Err(msg) => {
+                            return HandleMessageResult::IOError(IoResult::Err(format!(
+                                "{} at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
+                            )))
+                        }
+                        _ => {}
+                    },
+                }
+
+                internal_messages_ok_only
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::MoveUserToRoom {
+                        username,
+                        room_to: room,
+                    });
             }
         }
 
@@ -662,7 +785,6 @@ impl UserTcpService {
         ConnectResult::Ok
     }
     fn read_u16_and_string_from_socket(&mut self) -> Result<String, IoResult> {
-        // Get len (u16).
         let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
         loop {
             match self.read_from_socket(&mut len_buf) {
@@ -686,8 +808,10 @@ impl UserTcpService {
         let len = u16::decode::<u16>(&len_buf);
         if let Err(e) = len {
             return Err(IoResult::Err(format!(
-                "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
-                e, file!(), line!()
+                "u16::decode::<u16>() failed, error: failed to decode (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
             )));
         }
         let len = len.unwrap();
@@ -715,8 +839,74 @@ impl UserTcpService {
         let string = String::from_utf8(string_buf);
         if let Err(e) = string {
             return Err(IoResult::Err(format!(
-                "String::from_utf8() failed, error: failed to convert on 'username' (error: {}) at [{}, {}]",
-                e, file!(), line!()
+                "String::from_utf8() failed, error: failed to convert (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+
+        Ok(string.unwrap())
+    }
+    fn read_u8_and_string_from_socket(&mut self) -> Result<String, IoResult> {
+        let mut len_buf = vec![0u8; std::mem::size_of::<u8>()];
+        loop {
+            match self.read_from_socket(&mut len_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                IoResult::FIN => return Err(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return Err(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+            };
+        }
+
+        let len = u8::decode::<u8>(&len_buf);
+        if let Err(e) = len {
+            return Err(IoResult::Err(format!(
+                "u16::decode::<u8>() failed, error: failed to decode (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let len = len.unwrap();
+
+        let mut string_buf = vec![0u8; len as usize];
+        loop {
+            match self.read_from_socket(&mut string_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                IoResult::FIN => return Err(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return Err(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+            };
+        }
+
+        let string = String::from_utf8(string_buf);
+        if let Err(e) = string {
+            return Err(IoResult::Err(format!(
+                "String::from_utf8() failed, error: failed to convert (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
             )));
         }
 

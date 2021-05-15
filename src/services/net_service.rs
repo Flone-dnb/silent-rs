@@ -38,6 +38,7 @@ pub struct NetService {
     pub user_service: Arc<Mutex<UserTcpService>>,
     pub password_retry: PasswordRetrySleep,
     last_time_text_message_sent: DateTime<Local>,
+    last_time_entered_room: DateTime<Local>,
 }
 
 impl NetService {
@@ -45,6 +46,7 @@ impl NetService {
         Self {
             user_service: Arc::new(Mutex::new(UserTcpService::new(String::from("")))),
             last_time_text_message_sent: Local::now(),
+            last_time_entered_room: Local::now(),
             password_retry: PasswordRetrySleep {
                 sleep_time_start: Local::now(),
                 sleep_time_sec: 0,
@@ -79,6 +81,38 @@ impl NetService {
                 internal_messages,
             )
         });
+    }
+    pub fn enter_room(&mut self, room: &str) -> Result<(), ActionError> {
+        let time_diff = Local::now() - self.last_time_entered_room;
+        if time_diff.num_seconds() < SPAM_PROTECTION_SEC as i64 {
+            return Err(ActionError {
+                message: String::from("You can't change rooms that quickly!"),
+                show_modal: true,
+            });
+        }
+
+        match self.user_service.lock().unwrap().enter_room(room) {
+            HandleMessageResult::Ok => {}
+            HandleMessageResult::IOError(err) => match err {
+                IoResult::Err(msg) => {
+                    return Err(ActionError {
+                        message: format!("{} at [{}, {}]", msg, file!(), line!()),
+                        show_modal: false,
+                    });
+                }
+                _ => {}
+            },
+            HandleMessageResult::OtherErr(msg) => {
+                return Err(ActionError {
+                    message: format!("{} at [{}, {}]", msg, file!(), line!()),
+                    show_modal: false,
+                });
+            }
+        }
+
+        self.last_time_entered_room = Local::now();
+
+        Ok(())
     }
     pub fn send_user_message(&mut self, message: String) -> Result<(), ActionError> {
         let time_diff = Local::now() - self.last_time_text_message_sent;

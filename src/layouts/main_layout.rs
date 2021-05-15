@@ -37,7 +37,7 @@ pub enum MainLayoutMessage {
     RoomItemPressed(String),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct MainLayout {
     pub chat_list: ChatList,
     users_list: UserList,
@@ -45,10 +45,28 @@ pub struct MainLayout {
     pub connected_users: usize,
 
     pub message_string: String,
+    pub current_user_room: String,
+    pub current_user_name: String,
 
     modal_state: modal::State<ModalState>,
     message_input: text_input::State,
     settings_button: button::State,
+}
+
+impl Default for MainLayout {
+    fn default() -> Self {
+        MainLayout {
+            chat_list: ChatList::default(),
+            users_list: UserList::default(),
+            connected_users: 0,
+            message_string: String::from(""),
+            current_user_name: String::from(""),
+            current_user_room: String::from(DEFAULT_ROOM_NAME),
+            modal_state: modal::State::<ModalState>::default(),
+            message_input: text_input::State::default(),
+            settings_button: button::State::default(),
+        }
+    }
 }
 
 impl MainLayout {
@@ -74,6 +92,9 @@ impl MainLayout {
     pub fn clear_message_input(&mut self) {
         self.message_string.clear();
     }
+    pub fn clear_text_chat(&mut self) {
+        self.chat_list.clear_text_chat();
+    }
     pub fn add_user(
         &mut self,
         username: String,
@@ -82,12 +103,15 @@ impl MainLayout {
     ) -> Result<(), String> {
         if !dont_show_notice {
             self.add_info_message(format!("{} just connected to the chat.", &username));
-            thread::spawn(move || {
-                let mut audio = Audio::new();
-                audio.add("sound", CONNECTED_SOUND_PATH);
-                audio.play("sound"); // Execution continues while playback occurs in another thread.
-                audio.wait(); // Block until sounds finish playing
-            });
+
+            if self.current_user_room == DEFAULT_ROOM_NAME {
+                thread::spawn(move || {
+                    let mut audio = Audio::new();
+                    audio.add("sound", CONNECTED_SOUND_PATH);
+                    audio.play("sound"); // Execution continues while playback occurs in another thread.
+                    audio.wait(); // Block until sounds finish playing
+                });
+            }
         }
 
         let res = self.users_list.add_user(username, room);
@@ -101,18 +125,38 @@ impl MainLayout {
     pub fn add_room(&mut self, room_name: String) {
         self.users_list.add_room(room_name);
     }
-    pub fn remove_user(&mut self, username: String) -> Result<(), String> {
-        match self.users_list.remove_user(username.clone()) {
+    pub fn move_user(&mut self, username: &str, room_to: &str) -> Result<(), String> {
+        if let Err(msg) = self.users_list.move_user(
+            username,
+            room_to,
+            &self.current_user_name,
+            &self.current_user_room,
+        ) {
+            Err(format!("{} at [{}, {}]", msg, file!(), line!()))
+        } else {
+            Ok(())
+        }
+    }
+    pub fn remove_user(&mut self, username: &str) -> Result<(), String> {
+        let mut removed_user_room = String::new();
+        match self
+            .users_list
+            .remove_user(username, &mut removed_user_room)
+        {
             Err(msg) => return Err(format!("{} at [{}, {}]", msg, file!(), line!())),
             Ok(()) => {
                 self.connected_users = self.users_list.get_user_count();
                 self.add_info_message(format!("{} disconnected from the chat.", username));
-                thread::spawn(move || {
-                    let mut audio = Audio::new();
-                    audio.add("sound", DISCONNECT_SOUND_PATH);
-                    audio.play("sound"); // Execution continues while playback occurs in another thread.
-                    audio.wait(); // Block until sounds finish playing
-                });
+
+                if self.current_user_room == removed_user_room {
+                    thread::spawn(move || {
+                        let mut audio = Audio::new();
+                        audio.add("sound", DISCONNECT_SOUND_PATH);
+                        audio.play("sound"); // Execution continues while playback occurs in another thread.
+                        audio.wait(); // Block until sounds finish playing
+                    });
+                }
+
                 return Ok(());
             }
         }
