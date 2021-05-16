@@ -21,8 +21,12 @@ pub const INTERVAL_INTERNAL_MESSAGE_MS: u64 = 500;
 pub const INTERVAL_TCP_IDLE_MS: u64 = 250;
 pub const INTERVAL_TCP_MESSAGE_MS: u64 = 10;
 
-pub const INTERVAL_UDP_IDLE_MS: u64 = 5;
 pub const INTERVAL_UDP_MESSAGE_MS: u64 = 2;
+
+pub const IN_UDP_BUFFER_SIZE: usize = 1500;
+
+pub const USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT: u8 = 5; // when somebody connected and we already received his ping on UDP,
+                                                               // but no info about user was received on TCP (so retry later)
 
 pub const NEW_MESSAGE_SOUND_PATH: &str = "res/sounds/newmessage.wav";
 pub const CONNECTED_SOUND_PATH: &str = "res/sounds/connect.wav";

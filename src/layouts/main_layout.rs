@@ -70,6 +70,14 @@ impl Default for MainLayout {
 }
 
 impl MainLayout {
+    pub fn play_connect_sound(&self) {
+        thread::spawn(move || {
+            let mut audio = Audio::new();
+            audio.add("sound", CONNECTED_SOUND_PATH);
+            audio.play("sound"); // Execution continues while playback occurs in another thread.
+            audio.wait(); // Block until sounds finish playing
+        });
+    }
     pub fn is_modal_window_showed(&self) -> bool {
         self.modal_state.is_shown()
     }
@@ -89,8 +97,8 @@ impl MainLayout {
     pub fn get_message_input(&self) -> String {
         self.message_string.clone()
     }
-    pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) {
-        self.users_list.set_user_ping(username, ping_ms);
+    pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) -> Result<(), ()> {
+        self.users_list.set_user_ping(username, ping_ms)
     }
     pub fn clear_message_input(&mut self) {
         self.message_string.clear();

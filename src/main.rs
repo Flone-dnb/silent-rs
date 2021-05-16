@@ -80,13 +80,23 @@ struct Silent {
 pub enum InternalMessage {
     InitUserConfig,
     SystemIOError(String),
-    UserMessage { username: String, message: String },
+    UserMessage {
+        username: String,
+        message: String,
+    },
     RefreshConnectedUsersCount(usize),
     ClearAllUsers,
     UserConnected(String),
     UserDisconnected(String),
-    MoveUserToRoom { username: String, room_to: String },
-    UserPing { username: String, ping_ms: u16 },
+    MoveUserToRoom {
+        username: String,
+        room_to: String,
+    },
+    UserPing {
+        username: String,
+        ping_ms: u16,
+        try_again_number: u8, // when user was not found
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +185,7 @@ impl Application for Silent {
     ) -> Command<Self::Message> {
         match message {
             MainMessage::Tick(_) => {
+                let mut delayed_messages: Vec<InternalMessage> = Vec::new();
                 let mut guard_messages = self.internal_messages.lock().unwrap();
                 for message in guard_messages.iter() {
                     match message {
@@ -214,9 +225,28 @@ impl Application for Silent {
                                 }
                             }
                         }
-                        InternalMessage::UserPing { username, ping_ms } => {
-                            self.main_layout.set_user_ping(username, *ping_ms);
-                        }
+                        InternalMessage::UserPing {
+                            username,
+                            ping_ms,
+                            try_again_number,
+                        } => match self.main_layout.set_user_ping(username, *ping_ms) {
+                            Ok(()) => {}
+                            Err(()) => {
+                                if *try_again_number == 0u8 {
+                                    self.main_layout.add_system_message(format!(
+                                        "Ping of user '{}' was received but no info about the user was received (ping of unknown user) [failed after {} attempts to wait for user info].",
+                                        username,
+                                        USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT
+                                    ));
+                                } else {
+                                    delayed_messages.push(InternalMessage::UserPing {
+                                        username: String::from(username),
+                                        ping_ms: *ping_ms,
+                                        try_again_number: try_again_number - 1,
+                                    });
+                                }
+                            }
+                        },
                         InternalMessage::UserMessage { username, message } => {
                             self.main_layout
                                 .add_message(message.clone(), username.clone());
@@ -250,6 +280,7 @@ impl Application for Silent {
                     }
                 }
                 guard_messages.clear();
+                guard_messages.append(&mut delayed_messages);
             }
             MainMessage::ModalWindowMessage(message) => match message {
                 ModalMessage::OkButtonPressed => self.main_layout.hide_modal_window(),
@@ -366,6 +397,7 @@ impl Application for Silent {
                                         self.connect_layout.username_string.clone();
                                     self.current_window_layout = WindowLayout::MainWindow;
                                     self.is_connected = true;
+                                    self.main_layout.play_connect_sound();
 
                                     // Save config.
                                     if let Err(msg) = self.connect_layout.save_user_config() {

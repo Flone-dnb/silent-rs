@@ -37,7 +37,6 @@ pub enum ServerMessageTcp {
     UserMessage = 2,
     UserEntersRoom = 3,
     KeepAliveCheck = 4,
-    UserPing = 5,
 }
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
@@ -394,7 +393,6 @@ impl UserTcpService {
             if let Err(e) = self.send_keep_alive_check() {
                 return HandleMessageResult::IOError(e);
             } else {
-                println!("keep alive ok");
                 return HandleMessageResult::Ok;
             }
         }
@@ -451,34 +449,6 @@ impl UserTcpService {
                     .lock()
                     .unwrap()
                     .push(InternalMessage::UserMessage { username, message });
-            }
-            ServerMessageTcp::UserPing => {
-                let mut ping_buf = vec![0u8; std::mem::size_of::<u16>()];
-                loop {
-                    match self.read_from_socket(&mut ping_buf) {
-                        IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                            continue;
-                        }
-                        IoResult::Ok(_bytes) => break,
-                        res => return HandleMessageResult::IOError(res),
-                    }
-                }
-                let ping_ms = u16::decode::<u16>(&ping_buf);
-                if let Err(e) = ping_ms {
-                    return HandleMessageResult::IOError(IoResult::Err(format!(
-                        "u16::decode::<u16>() failed, error: {} at [{}, {}]",
-                        e,
-                        file!(),
-                        line!()
-                    )));
-                }
-                let ping_ms = ping_ms.unwrap();
-
-                internal_messages_ok_only
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserPing { username, ping_ms });
             }
             ServerMessageTcp::UserEntersRoom => {
                 let mut room = String::new();

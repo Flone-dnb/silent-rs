@@ -426,15 +426,7 @@ impl NetService {
 
         let mut user_udp_service = UserUdpService::new();
         match user_udp_service.connect(&udp_socket, &username) {
-            Ok(ping_ms) => {
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserPing {
-                        username: username.clone(),
-                        ping_ms,
-                    });
-            }
+            Ok(()) => {}
             Err(msg) => {
                 internal_messages
                     .lock()
@@ -445,10 +437,72 @@ impl NetService {
                         file!(),
                         line!()
                     )));
+                return;
             }
         }
 
-        // use 'recv' and 'send'
         // Ready.
+
+        loop {
+            let mut in_buf = vec![0u8; IN_UDP_BUFFER_SIZE];
+            let mut _peek_len = 0usize;
+
+            loop {
+                match user_udp_service.peek(&udp_socket, &mut in_buf) {
+                    Ok(n) => {
+                        if n > 0 {
+                            _peek_len = n;
+                            break;
+                        }
+                    }
+                    Err(msg) => {
+                        internal_messages
+                            .lock()
+                            .unwrap()
+                            .push(InternalMessage::SystemIOError(format!(
+                                "{}, at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
+                            )));
+                        return;
+                    }
+                }
+            }
+
+            match user_udp_service.recv(&udp_socket, &mut in_buf, _peek_len) {
+                Ok(()) => {}
+                Err(msg) => {
+                    internal_messages
+                        .lock()
+                        .unwrap()
+                        .push(InternalMessage::SystemIOError(format!(
+                            "{}, at [{}, {}]",
+                            msg,
+                            file!(),
+                            line!()
+                        )));
+                    return;
+                }
+            }
+
+            match user_udp_service.handle_message(&udp_socket, &mut in_buf, &internal_messages) {
+                Ok(()) => {}
+                Err(msg) => {
+                    internal_messages
+                        .lock()
+                        .unwrap()
+                        .push(InternalMessage::SystemIOError(format!(
+                            "{}, at [{}, {}]",
+                            msg,
+                            file!(),
+                            line!()
+                        )));
+                    return;
+                }
+            }
+        }
+
+        // End.
     }
 }

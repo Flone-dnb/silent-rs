@@ -100,17 +100,19 @@ impl UserList {
 
         Ok(())
     }
-    pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) {
+    pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) -> Result<(), ()> {
         let _process_guard = self.process_lock.lock().unwrap();
 
         for room in self.rooms.iter_mut() {
             for user in room.users.iter_mut() {
                 if user.user_data.username == username {
                     user.user_data.ping_ms = ping_ms;
-                    return;
+                    return Ok(());
                 }
             }
         }
+
+        Err(()) // not found
     }
     pub fn move_user(
         &mut self,
