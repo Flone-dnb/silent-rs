@@ -1,7 +1,12 @@
-use std::ops::RangeInclusive;
-
 // External.
-use iced::{button, slider, Button, Color, Column, Container, Element, Length, Row, Slider, Text};
+use iced::{
+    button, slider, Button, Color, Column, Container, Element, HorizontalAlignment, Length, Row,
+    Slider, Text,
+};
+use system_wide_key_state::*;
+
+// Std.
+use std::ops::RangeInclusive;
 
 // Custom.
 use crate::global_params::*;
@@ -14,19 +19,22 @@ pub enum SettingsLayoutMessage {
     AboutSettingsButtonPressed,
     GithubButtonPressed,
     FromSettingsButtonPressed,
+    PushToTalkChangeButtonPressed,
 }
 
-#[derive(Debug)]
 pub struct SettingsLayout {
     active_option: CurrentActiveOption,
 
     about_details: AboutDetails,
 
     pub ui_scaling_slider_value: i32,
+    pub push_to_talk_key: KeyCode,
+    pub ask_for_push_to_talk_button: bool,
 
     back_button: button::State,
     general_button: button::State,
     about_button: button::State,
+    push_to_talk_button: button::State,
     ui_scaling_slider_state: slider::State,
 }
 
@@ -40,6 +48,9 @@ impl Default for SettingsLayout {
             back_button: button::State::default(),
             general_button: button::State::default(),
             about_button: button::State::default(),
+            push_to_talk_button: button::State::default(),
+            push_to_talk_key: KeyCode::KT,
+            ask_for_push_to_talk_button: false,
         }
     }
 }
@@ -97,6 +108,11 @@ impl SettingsLayout {
                 general_button = general_button.style(current_style.theme);
                 about_button = about_button.style(default_theme::GrayButton);
 
+                let mut push_to_talk_text = get_key_name(self.push_to_talk_key);
+                if self.ask_for_push_to_talk_button {
+                    push_to_talk_text = String::from("Press any key...");
+                }
+
                 right_content_column = right_content_column
                     .push(Text::new("UI scaling").color(Color::WHITE))
                     .push(
@@ -117,6 +133,24 @@ impl SettingsLayout {
                                     .width(Length::FillPortion(20)),
                             )
                             .push(Column::new().width(Length::FillPortion(28))),
+                    )
+                    .push(Text::new(" ").color(Color::WHITE))
+                    .push(Text::new("Push-to-Talk button").color(Color::WHITE))
+                    .push(
+                        Row::new()
+                            .push(
+                                Button::new(
+                                    &mut self.push_to_talk_button,
+                                    Text::new(push_to_talk_text)
+                                        .horizontal_alignment(HorizontalAlignment::Center),
+                                )
+                                .width(Length::FillPortion(30))
+                                .on_press(MainMessage::MessageFromSettingsLayout(
+                                    SettingsLayoutMessage::PushToTalkChangeButtonPressed,
+                                ))
+                                .style(current_style.theme),
+                            )
+                            .push(Column::new().width(Length::FillPortion(70))),
                     );
             }
             CurrentActiveOption::About => {

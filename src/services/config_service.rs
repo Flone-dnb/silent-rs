@@ -1,6 +1,9 @@
 // External.
 use bytevec::{ByteDecodable, ByteEncodable};
+use num_traits::cast::FromPrimitive;
+use num_traits::cast::ToPrimitive;
 use platform_dirs::UserDirs;
+use system_wide_key_state::*;
 
 // Std.
 use std::io::prelude::*;
@@ -10,19 +13,20 @@ use std::{fs::File, u16};
 // Custom.
 use crate::global_params::*;
 
-#[derive(Debug)]
 pub struct UserConfig {
     pub username: String,
     pub server: String,
     pub server_port: u16,
     pub server_password: String,
     pub ui_scaling: u16,
+    pub push_to_talk_button: KeyCode,
 }
 
 impl UserConfig {
     pub fn new() -> Result<UserConfig, String> {
         UserConfig::open()
     }
+
     pub fn save(&self) -> Result<(), String> {
         let config_path = UserConfig::get_config_file_path();
         if let Err(e) = config_path {
@@ -178,6 +182,27 @@ impl UserConfig {
             ));
         }
 
+        // Write push-to-talk key.
+        let key = self.push_to_talk_button.to_u64().unwrap();
+        let buf = u64::encode::<u64>(&key);
+        if let Err(e) = buf {
+            return Err(format!(
+                "u64::encode::<u64>() failed, error: {} at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let buf = buf.unwrap();
+        if let Err(e) = config_file.write(&buf) {
+            return Err(format!(
+                "File::write() failed, error: can't write (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            ));
+        }
+
         // new settings go here...
 
         // Finished.
@@ -209,6 +234,7 @@ impl UserConfig {
 
         Ok(())
     }
+
     fn empty() -> UserConfig {
         UserConfig {
             username: String::from(""),
@@ -216,8 +242,10 @@ impl UserConfig {
             server_port: DEFAULT_SERVER_PORT,
             server_password: String::from(""),
             ui_scaling: 100,
+            push_to_talk_button: KeyCode::KT,
         }
     }
+
     fn open() -> Result<UserConfig, String> {
         let config_path = UserConfig::get_config_file_path();
         if let Err(e) = config_path {
@@ -373,6 +401,28 @@ impl UserConfig {
             }
             user_config.ui_scaling = ui_scaling.unwrap();
 
+            // Read push-to-talk button.
+            let mut buf = vec![0u8; std::mem::size_of::<u64>()];
+            if let Err(e) = config_file.read(&mut buf) {
+                return Err(format!(
+                    "File::read() failed, error: can't read (error: {}) at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                ));
+            }
+            let key_code = u64::decode::<u64>(&buf).unwrap();
+            match FromPrimitive::from_u64(key_code) {
+                Some(v) => user_config.push_to_talk_button = v,
+                None => {
+                    return Err(format!(
+                        "FromPrimitive::from_u64 failed at [{}, {}]",
+                        file!(),
+                        line!()
+                    ));
+                }
+            }
+
             //
             // please use 'config_version' variable to handle old config versions...
             //
@@ -382,6 +432,7 @@ impl UserConfig {
             Ok(UserConfig::empty())
         }
     }
+
     fn get_config_file_path() -> Result<String, String> {
         let user_dirs = UserDirs::new();
         if user_dirs.is_none() {
@@ -404,6 +455,7 @@ impl UserConfig {
 
         Ok(_config_file_path)
     }
+
     fn read_u16_from_file(file: &mut File) -> Result<u16, String> {
         let mut buf = vec![0u8; std::mem::size_of::<u16>()];
         if let Err(e) = file.read(&mut buf) {
@@ -416,6 +468,7 @@ impl UserConfig {
         }
         Ok(u16::decode::<u16>(&buf).unwrap())
     }
+
     fn read_string_from_file(file: &mut File, string_len: u16) -> Result<String, String> {
         let mut buf = vec![0u8; string_len as usize];
         if let Err(e) = file.read(&mut buf) {
@@ -435,6 +488,7 @@ impl UserConfig {
         }
         Ok(string.unwrap())
     }
+
     fn write_u16_to_file(file: &mut File, val: u16) -> Result<(), String> {
         let buf = u16::encode::<u16>(&val);
         if let Err(e) = buf {
@@ -457,6 +511,7 @@ impl UserConfig {
         }
         Ok(())
     }
+
     fn write_string_to_file(file: &mut File, string: &str) -> Result<(), String> {
         let buf = string.as_bytes();
         if let Err(e) = file.write(&buf) {

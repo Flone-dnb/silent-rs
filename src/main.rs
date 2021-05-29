@@ -7,6 +7,7 @@ use iced::{
     Settings, Subscription,
 };
 use iced_native::Event;
+use system_wide_key_state::*;
 
 // Std.
 use std::fs::File;
@@ -58,7 +59,6 @@ enum WindowLayout {
     SettingsWindow,
 }
 
-#[derive(Debug)]
 struct Silent {
     main_layout: MainLayout,
     connect_layout: ConnectLayout,
@@ -113,6 +113,7 @@ pub enum MainMessage {
     Tick(()),
     ModalWindowMessage(ModalMessage),
     ToSettingsButtonPressed,
+    ButtonPressed(keyboard::Event),
 }
 
 impl Silent {
@@ -157,15 +158,7 @@ impl Application for Silent {
     fn subscription(&self) -> Subscription<Self::Message> {
         // look for input
         let key_event = iced_native::subscription::events_with(|event, _status| match event {
-            Event::Keyboard(keyboard_event) => match keyboard_event {
-                keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::Tab,
-                    modifiers,
-                } => Some(MainMessage::MessageFromConnectLayout(
-                    ConnectLayoutMessage::TabPressed,
-                )),
-                _ => None,
-            },
+            Event::Keyboard(keyboard_event) => Some(MainMessage::ButtonPressed(keyboard_event)),
             _ => None,
         });
 
@@ -211,6 +204,7 @@ impl Application for Silent {
                             let config = config.unwrap();
 
                             self.settings_layout.ui_scaling_slider_value = config.ui_scaling as i32;
+                            self.settings_layout.push_to_talk_key = config.push_to_talk_button;
                             self.ui_scaling = config.ui_scaling as f64 / 100.0;
                         }
                         InternalMessage::SystemIOError(msg) => {
@@ -282,6 +276,156 @@ impl Application for Silent {
                 guard_messages.clear();
                 guard_messages.append(&mut delayed_messages);
             }
+            MainMessage::ButtonPressed(event) => match event {
+                keyboard::Event::KeyPressed {
+                    key_code,
+                    modifiers,
+                } => {
+                    // todo
+                    if key_code == keyboard::KeyCode::Tab
+                        && self.settings_layout.ask_for_push_to_talk_button == false
+                    {
+                        if self.current_window_layout == WindowLayout::ConnectWindow {
+                            self.connect_layout.focus_on_next_item();
+                        }
+                    } else if self.settings_layout.ask_for_push_to_talk_button {
+                        let mut key_code_internal = KeyCode::KG;
+                        let mut not_set = false;
+                        let mut skip = false;
+
+                        if modifiers.shift {
+                            key_code_internal = KeyCode::KShift;
+                        } else if modifiers.control {
+                            key_code_internal = KeyCode::KCtrl;
+                        } else if modifiers.alt {
+                            key_code_internal = KeyCode::KAlt;
+                        } else {
+                            match key_code {
+                                keyboard::KeyCode::Escape => {
+                                    skip = true;
+                                }
+                                keyboard::KeyCode::Tab => {
+                                    key_code_internal = KeyCode::KTab;
+                                }
+                                keyboard::KeyCode::Q => {
+                                    key_code_internal = KeyCode::KQ;
+                                }
+                                keyboard::KeyCode::W => {
+                                    key_code_internal = KeyCode::KW;
+                                }
+                                keyboard::KeyCode::E => {
+                                    key_code_internal = KeyCode::KE;
+                                }
+                                keyboard::KeyCode::R => {
+                                    key_code_internal = KeyCode::KR;
+                                }
+                                keyboard::KeyCode::T => {
+                                    key_code_internal = KeyCode::KT;
+                                }
+                                keyboard::KeyCode::Y => {
+                                    key_code_internal = KeyCode::KY;
+                                }
+                                keyboard::KeyCode::U => {
+                                    key_code_internal = KeyCode::KU;
+                                }
+                                keyboard::KeyCode::I => {
+                                    key_code_internal = KeyCode::KI;
+                                }
+                                keyboard::KeyCode::O => {
+                                    key_code_internal = KeyCode::KO;
+                                }
+                                keyboard::KeyCode::P => {
+                                    key_code_internal = KeyCode::KP;
+                                }
+                                keyboard::KeyCode::A => {
+                                    key_code_internal = KeyCode::KA;
+                                }
+                                keyboard::KeyCode::S => {
+                                    key_code_internal = KeyCode::KS;
+                                }
+                                keyboard::KeyCode::D => {
+                                    key_code_internal = KeyCode::KD;
+                                }
+                                keyboard::KeyCode::F => {
+                                    key_code_internal = KeyCode::KF;
+                                }
+                                keyboard::KeyCode::G => {
+                                    key_code_internal = KeyCode::KG;
+                                }
+                                keyboard::KeyCode::H => {
+                                    key_code_internal = KeyCode::KH;
+                                }
+                                keyboard::KeyCode::J => {
+                                    key_code_internal = KeyCode::KJ;
+                                }
+                                keyboard::KeyCode::K => {
+                                    key_code_internal = KeyCode::KK;
+                                }
+                                keyboard::KeyCode::L => {
+                                    key_code_internal = KeyCode::KL;
+                                }
+                                keyboard::KeyCode::Z => {
+                                    key_code_internal = KeyCode::KZ;
+                                }
+                                keyboard::KeyCode::X => {
+                                    key_code_internal = KeyCode::KX;
+                                }
+                                keyboard::KeyCode::C => {
+                                    key_code_internal = KeyCode::KC;
+                                }
+                                keyboard::KeyCode::V => {
+                                    key_code_internal = KeyCode::KV;
+                                }
+                                keyboard::KeyCode::B => {
+                                    key_code_internal = KeyCode::KB;
+                                }
+                                keyboard::KeyCode::N => {
+                                    key_code_internal = KeyCode::KN;
+                                }
+                                keyboard::KeyCode::M => {
+                                    key_code_internal = KeyCode::KM;
+                                }
+                                _ => not_set = true,
+                            }
+                        }
+
+                        if not_set == false {
+                            if skip {
+                                self.settings_layout.ask_for_push_to_talk_button = false;
+                            } else {
+                                self.settings_layout.push_to_talk_key = key_code_internal;
+                                self.settings_layout.ask_for_push_to_talk_button = false;
+
+                                // Save to config.
+                                let config = UserConfig::new();
+                                if let Err(msg) = &config {
+                                    let error_msg =
+                                        format!("{} at [{}, {}]", msg, file!(), line!());
+                                    if !self.is_connected {
+                                        self.connect_layout
+                                            .set_connect_result(ConnectResult::Err(error_msg));
+                                    } else {
+                                        self.main_layout.add_system_message(error_msg);
+                                    }
+                                }
+                                let mut config = config.unwrap();
+                                config.push_to_talk_button = key_code_internal;
+                                if let Err(msg) = config.save() {
+                                    let error_msg =
+                                        format!("{} at [{}, {}]", msg, file!(), line!());
+                                    if !self.is_connected {
+                                        self.connect_layout
+                                            .set_connect_result(ConnectResult::Err(error_msg));
+                                    } else {
+                                        self.main_layout.add_system_message(error_msg);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            },
             MainMessage::ModalWindowMessage(message) => match message {
                 ModalMessage::OkButtonPressed => self.main_layout.hide_modal_window(),
                 ModalMessage::CloseModal => self.main_layout.hide_modal_window(),
@@ -352,11 +496,6 @@ impl Application for Silent {
                 }
             }
             MainMessage::MessageFromConnectLayout(message) => match message {
-                ConnectLayoutMessage::TabPressed => {
-                    if self.current_window_layout == WindowLayout::ConnectWindow {
-                        self.connect_layout.focus_on_next_item();
-                    }
-                }
                 ConnectLayoutMessage::ConnectButtonPressed => {
                     if let Ok(config) = self.connect_layout.is_data_filled() {
                         let (tx, rx) = mpsc::channel();
@@ -463,6 +602,11 @@ impl Application for Silent {
                     } else {
                         self.current_window_layout = WindowLayout::ConnectWindow
                     }
+
+                    self.settings_layout.ask_for_push_to_talk_button = false;
+                }
+                SettingsLayoutMessage::PushToTalkChangeButtonPressed => {
+                    self.settings_layout.ask_for_push_to_talk_button = true;
                 }
                 SettingsLayoutMessage::GithubButtonPressed => {
                     opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();

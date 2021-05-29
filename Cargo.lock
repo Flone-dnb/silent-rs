@@ -2745,6 +2745,7 @@ dependencies = [
  "platform-dirs",
  "png",
  "rusty_audio",
+ "system_wide_key_state",
 ]
 
 [[package]]
@@ -2874,6 +2875,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "system_wide_key_state"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2f1554ab89017a202407188207b9dbb2fd4f0b44c3f65ebed40691847250f14"
+dependencies = [
+ "num-derive",
+ "num-traits",
+ "winapi 0.3.9",
+ "x11",
 ]
 
 [[package]]
@@ -3417,6 +3430,16 @@ checksum = "d59cefebd0c892fa2dd6de581e937301d8552cb44489cdff035c6187cb63fa5e"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
+]
+
+[[package]]
+name = "x11"
+version = "2.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ecd092546cb16f25783a5451538e73afc8d32e242648d54f4ae5459ba1e773"
+dependencies = [
+ "libc",
+ "pkg-config",
 ]
 
 [[package]]

@@ -15,7 +15,6 @@ use crate::MainMessage;
 #[derive(Debug, Clone)]
 pub enum ConnectLayoutMessage {
     ConnectButtonPressed,
-    TabPressed,
 }
 
 #[derive(Debug)]
