@@ -23,6 +23,7 @@ use global_params::*;
 use layouts::connect_layout::*;
 use layouts::main_layout::*;
 use layouts::settings_layout::*;
+use services::audio_service::audio_service::*;
 use services::config_service::*;
 use services::net_service::*;
 use services::user_tcp_service::ConnectResult;
@@ -63,15 +64,15 @@ struct Silent {
     main_layout: MainLayout,
     connect_layout: ConnectLayout,
     settings_layout: SettingsLayout,
+    current_window_layout: WindowLayout,
 
     internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
 
-    net_service: NetService,
+    net_service: Arc<Mutex<NetService>>,
+    audio_service: Arc<Mutex<AudioService>>,
 
     ui_scaling: f64,
     is_connected: bool,
-
-    current_window_layout: WindowLayout,
 
     style: StyleTheme,
 }
@@ -128,7 +129,8 @@ impl Silent {
             main_layout: MainLayout::default(),
             ui_scaling: 1.0,
             is_connected: false,
-            net_service: NetService::new(),
+            net_service: Arc::new(Mutex::new(NetService::new())),
+            audio_service: Arc::new(Mutex::new(AudioService::default())),
             internal_messages: Arc::new(Mutex::new(messages)),
         }
     }
@@ -206,6 +208,11 @@ impl Application for Silent {
                             self.settings_layout.ui_scaling_slider_value = config.ui_scaling as i32;
                             self.settings_layout.push_to_talk_key = config.push_to_talk_button;
                             self.ui_scaling = config.ui_scaling as f64 / 100.0;
+
+                            self.audio_service
+                                .lock()
+                                .unwrap()
+                                .init_net_service(Arc::clone(&self.net_service));
                         }
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
@@ -395,6 +402,7 @@ impl Application for Silent {
                             } else {
                                 self.settings_layout.push_to_talk_key = key_code_internal;
                                 self.settings_layout.ask_for_push_to_talk_button = false;
+                                self.settings_layout.push_to_talk_button_hint = "restart required";
 
                                 // Save to config.
                                 let config = UserConfig::new();
@@ -436,7 +444,7 @@ impl Application for Silent {
                 }
                 MainLayoutMessage::RoomItemPressed(room_name) => {
                     if self.main_layout.current_user_room != room_name {
-                        if let Err(msg) = self.net_service.enter_room(&room_name) {
+                        if let Err(msg) = self.net_service.lock().unwrap().enter_room(&room_name) {
                             if msg.show_modal {
                                 self.main_layout.show_modal_window(msg.message);
                             } else {
@@ -454,7 +462,9 @@ impl Application for Silent {
                     if !self.main_layout.is_modal_window_showed() {
                         let message = self.main_layout.get_message_input();
                         if !message.is_empty() {
-                            if let Err(msg) = self.net_service.send_user_message(message) {
+                            if let Err(msg) =
+                                self.net_service.lock().unwrap().send_user_message(message)
+                            {
                                 if msg.show_modal {
                                     self.main_layout.show_modal_window(msg.message);
                                 } else {
@@ -497,10 +507,17 @@ impl Application for Silent {
             }
             MainMessage::MessageFromConnectLayout(message) => match message {
                 ConnectLayoutMessage::ConnectButtonPressed => {
-                    if let Ok(config) = self.connect_layout.is_data_filled() {
+                    if let Ok(config) = self
+                        .connect_layout
+                        .is_data_filled(self.settings_layout.push_to_talk_key)
+                    {
                         let (tx, rx) = mpsc::channel();
 
-                        self.net_service.start(
+                        let mut net_service_guard = self.net_service.lock().unwrap();
+
+                        net_service_guard.init_audio_service(Arc::clone(&self.audio_service));
+
+                        net_service_guard.start(
                             config,
                             self.connect_layout.username_string.clone(),
                             self.connect_layout.password_string.clone(),
@@ -532,6 +549,7 @@ impl Application for Silent {
                                             line!()
                                         ));
                                     }
+
                                     self.main_layout.current_user_name =
                                         self.connect_layout.username_string.clone();
                                     self.current_window_layout = WindowLayout::MainWindow;
@@ -574,7 +592,7 @@ impl Application for Silent {
                                     self.connect_layout
                                         .set_connect_result(ConnectResult::Err(message));
 
-                                    self.net_service.password_retry = PasswordRetrySleep {
+                                    net_service_guard.password_retry = PasswordRetrySleep {
                                         sleep: true,
                                         sleep_time_sec: sleep_in_sec,
                                         sleep_time_start: Local::now(),
@@ -604,6 +622,7 @@ impl Application for Silent {
                     }
 
                     self.settings_layout.ask_for_push_to_talk_button = false;
+                    self.settings_layout.push_to_talk_button_hint = "";
                 }
                 SettingsLayoutMessage::PushToTalkChangeButtonPressed => {
                     self.settings_layout.ask_for_push_to_talk_button = true;

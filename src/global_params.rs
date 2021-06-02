@@ -31,3 +31,5 @@ pub const USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT: u8 = 5; // when somebody 
 pub const NEW_MESSAGE_SOUND_PATH: &str = "res/sounds/newmessage.wav";
 pub const CONNECTED_SOUND_PATH: &str = "res/sounds/connect.wav";
 pub const DISCONNECT_SOUND_PATH: &str = "res/sounds/disconnect.wav";
+pub const PUSH_TO_TALK_PRESS_SOUND: &str = "res/sounds/press.wav";
+pub const PUSH_TO_TALK_UNPRESS_SOUND: &str = "res/sounds/unpress.wav";

@@ -2,6 +2,7 @@
 use bytevec::ByteDecodable;
 use chrono::prelude::*;
 use num_traits::FromPrimitive;
+use system_wide_key_state::*;
 
 // Std.
 use std::net::*;
@@ -11,6 +12,7 @@ use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
+use crate::services::audio_service::audio_service::*;
 use crate::services::user_tcp_service::*;
 use crate::services::user_udp_service::*;
 use crate::InternalMessage;
@@ -25,18 +27,19 @@ pub struct ClientConfig {
     pub server_name: String,
     pub server_port: String,
     pub server_password: String,
+    pub push_to_talk_key: KeyCode,
 }
 
-#[derive(Debug)]
 pub struct PasswordRetrySleep {
     pub sleep_time_start: DateTime<Local>,
     pub sleep_time_sec: usize,
     pub sleep: bool,
 }
 
-#[derive(Debug)]
 pub struct NetService {
-    pub user_service: Arc<Mutex<UserTcpService>>,
+    pub user_tcp_service: Arc<Mutex<UserTcpService>>,
+    pub user_udp_service: Arc<Mutex<UserUdpService>>,
+    pub audio_service: Option<Arc<Mutex<AudioService>>>,
     pub password_retry: PasswordRetrySleep,
     last_time_text_message_sent: DateTime<Local>,
     last_time_entered_room: DateTime<Local>,
@@ -45,15 +48,21 @@ pub struct NetService {
 impl NetService {
     pub fn new() -> Self {
         Self {
-            user_service: Arc::new(Mutex::new(UserTcpService::new(String::from("")))),
+            user_tcp_service: Arc::new(Mutex::new(UserTcpService::new(String::from("")))),
+            user_udp_service: Arc::new(Mutex::new(UserUdpService::new())),
             last_time_text_message_sent: Local::now(),
             last_time_entered_room: Local::now(),
+            audio_service: None,
             password_retry: PasswordRetrySleep {
                 sleep_time_start: Local::now(),
                 sleep_time_sec: 0,
                 sleep: false,
             },
         }
+    }
+
+    pub fn init_audio_service(&mut self, audio_service: Arc<Mutex<AudioService>>) {
+        self.audio_service = Some(audio_service);
     }
 
     pub fn start(
@@ -72,15 +81,19 @@ impl NetService {
         }
 
         // Start TCP service.
-        self.user_service = Arc::new(Mutex::new(UserTcpService::new(server_password)));
-        let user_service_copy = Arc::clone(&self.user_service);
+        self.user_tcp_service = Arc::new(Mutex::new(UserTcpService::new(server_password)));
+        let user_tcp_service_copy = Arc::clone(&self.user_tcp_service);
+        let user_udp_service_copy = Arc::clone(&self.user_udp_service);
+        let audio_service_copy = Arc::clone(self.audio_service.as_ref().unwrap());
         thread::spawn(move || {
             NetService::tcp_service(
                 config,
                 username,
-                user_service_copy,
+                user_tcp_service_copy,
+                user_udp_service_copy,
                 connect_layout_sender,
                 internal_messages,
+                audio_service_copy,
             )
         });
     }
@@ -93,7 +106,7 @@ impl NetService {
             });
         }
 
-        match self.user_service.lock().unwrap().enter_room(room) {
+        match self.user_tcp_service.lock().unwrap().enter_room(room) {
             HandleMessageResult::Ok => {}
             HandleMessageResult::IOError(err) => match err {
                 IoResult::Err(msg) => {
@@ -126,7 +139,7 @@ impl NetService {
         }
 
         match self
-            .user_service
+            .user_tcp_service
             .lock()
             .unwrap()
             .send_user_text_message(message)
@@ -157,9 +170,11 @@ impl NetService {
     fn tcp_service(
         config: ClientConfig,
         username: String,
-        user_service: Arc<Mutex<UserTcpService>>,
+        user_tcp_service: Arc<Mutex<UserTcpService>>,
+        user_udp_service: Arc<Mutex<UserUdpService>>,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        audio_service: Arc<Mutex<AudioService>>,
     ) {
         let tcp_socket =
             TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
@@ -193,14 +208,14 @@ impl NetService {
 
         // Move socket and userinfo to UserNetService.
         {
-            let mut user_service_guard = user_service.lock().unwrap();
+            let mut user_service_guard = user_tcp_service.lock().unwrap();
             user_service_guard.tcp_socket = Some(tcp_socket);
             user_service_guard.user_info = UserInfo::new(username.clone());
         }
 
         // Connect.
         {
-            let mut user_service_guard = user_service.lock().unwrap();
+            let mut user_service_guard = user_tcp_service.lock().unwrap();
             match user_service_guard.connect_user(sender) {
                 ConnectResult::Ok => {
                     // Get info about all other users.
@@ -256,13 +271,17 @@ impl NetService {
             let username_copy = username.clone();
             let server_name_copy = config.server_name.clone();
             let server_port_copy = config.server_port.clone();
-            let internam_messages_copy = Arc::clone(&internal_messages);
+            let internal_messages_copy = Arc::clone(&internal_messages);
+            let push_to_talk_button = config.push_to_talk_key;
             thread::spawn(move || {
                 NetService::udp_service(
                     username_copy,
                     server_name_copy,
                     server_port_copy,
-                    internam_messages_copy,
+                    internal_messages_copy,
+                    user_udp_service,
+                    audio_service,
+                    push_to_talk_button,
                 )
             });
         }
@@ -273,7 +292,7 @@ impl NetService {
             let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
             loop {
                 {
-                    let mut user_service_guard = user_service.lock().unwrap();
+                    let mut user_service_guard = user_tcp_service.lock().unwrap();
                     match user_service_guard.read_from_socket(&mut in_buf) {
                         IoResult::WouldBlock => {
                             drop(user_service_guard);
@@ -328,7 +347,7 @@ impl NetService {
 
                 // Handle message.
                 {
-                    let mut user_service_guard = user_service.lock().unwrap();
+                    let mut user_service_guard = user_tcp_service.lock().unwrap();
                     match user_service_guard.handle_message(message_id, &internal_messages) {
                         HandleMessageResult::Ok => {}
                         HandleMessageResult::IOError(err) => match err {
@@ -382,6 +401,9 @@ impl NetService {
         server_name: String,
         server_port: String,
         internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        user_udp_service: Arc<Mutex<UserUdpService>>,
+        audio_service: Arc<Mutex<AudioService>>,
+        push_to_talk_key: KeyCode,
     ) {
         let udp_socket = UdpSocket::bind("127.0.0.1:0"); // random port
         if let Err(e) = udp_socket {
@@ -424,8 +446,28 @@ impl NetService {
             return;
         }
 
-        let mut user_udp_service = UserUdpService::new();
-        match user_udp_service.connect(&udp_socket, &username) {
+        // clone socket
+        {
+            let res = udp_socket.try_clone();
+            if let Err(e) = res {
+                internal_messages
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::SystemIOError(format!(
+                        "udp_socket.try_clone() failed, error: {}, at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    )));
+                return;
+            }
+            user_udp_service
+                .lock()
+                .unwrap()
+                .assign_socket_and_name(res.unwrap(), username);
+        }
+
+        match user_udp_service.lock().unwrap().connect(&udp_socket) {
             Ok(()) => {}
             Err(msg) => {
                 internal_messages
@@ -442,19 +484,59 @@ impl NetService {
         }
 
         // Ready.
+        {
+            let audio_service_guard = audio_service.lock().unwrap();
+            audio_service_guard
+                .start_waiting_for_voice(push_to_talk_key, Arc::clone(&audio_service));
+        }
 
         loop {
             let mut in_buf = vec![0u8; IN_UDP_BUFFER_SIZE];
             let mut _peek_len = 0usize;
 
             loop {
-                match user_udp_service.peek(&udp_socket, &mut in_buf) {
+                let mut _res = Result::Ok(0);
+                {
+                    _res = user_udp_service
+                        .lock()
+                        .unwrap()
+                        .peek(&udp_socket, &mut in_buf);
+                }
+                match _res {
                     Ok(n) => {
                         if n > 0 {
                             _peek_len = n;
                             break;
                         }
                     }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(INTERVAL_UDP_MESSAGE_MS));
+                        continue;
+                    }
+                    Err(e) => {
+                        internal_messages
+                            .lock()
+                            .unwrap()
+                            .push(InternalMessage::SystemIOError(format!(
+                                "udp_socket.peek_from() failed, error: {}, at [{}, {}]",
+                                e,
+                                file!(),
+                                line!()
+                            )));
+                        return;
+                    }
+                }
+            }
+
+            // there is some data receive it
+            {
+                // this might sleep a little (inside of recv())
+                match user_udp_service
+                    .lock()
+                    .unwrap()
+                    .recv(&udp_socket, &mut in_buf, _peek_len)
+                {
+                    Ok(()) => {}
                     Err(msg) => {
                         internal_messages
                             .lock()
@@ -470,35 +552,28 @@ impl NetService {
                 }
             }
 
-            match user_udp_service.recv(&udp_socket, &mut in_buf, _peek_len) {
-                Ok(()) => {}
-                Err(msg) => {
-                    internal_messages
-                        .lock()
-                        .unwrap()
-                        .push(InternalMessage::SystemIOError(format!(
-                            "{}, at [{}, {}]",
-                            msg,
-                            file!(),
-                            line!()
-                        )));
-                    return;
-                }
-            }
-
-            match user_udp_service.handle_message(&udp_socket, &mut in_buf, &internal_messages) {
-                Ok(()) => {}
-                Err(msg) => {
-                    internal_messages
-                        .lock()
-                        .unwrap()
-                        .push(InternalMessage::SystemIOError(format!(
-                            "{}, at [{}, {}]",
-                            msg,
-                            file!(),
-                            line!()
-                        )));
-                    return;
+            // handle received data
+            {
+                // this might sleep a little (inside of handle_message())
+                match user_udp_service.lock().unwrap().handle_message(
+                    &udp_socket,
+                    &mut in_buf,
+                    &internal_messages,
+                    &audio_service,
+                ) {
+                    Ok(()) => {}
+                    Err(msg) => {
+                        internal_messages
+                            .lock()
+                            .unwrap()
+                            .push(InternalMessage::SystemIOError(format!(
+                                "{}, at [{}, {}]",
+                                msg,
+                                file!(),
+                                line!()
+                            )));
+                        return;
+                    }
                 }
             }
         }

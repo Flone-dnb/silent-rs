@@ -3,6 +3,7 @@ use iced::{
     button, text_input, Align, Button, Color, Column, Element, HorizontalAlignment, Length, Row,
     Text, TextInput,
 };
+use system_wide_key_state::KeyCode;
 
 // Custom.
 use crate::global_params::*;
@@ -100,7 +101,7 @@ impl ConnectLayout {
 
         config.save()
     }
-    pub fn is_data_filled(&mut self) -> Result<ClientConfig, ()> {
+    pub fn is_data_filled(&mut self, push_to_talk_key: KeyCode) -> Result<ClientConfig, ()> {
         if self.servername_string.chars().count() > 1
             && self.username_string.chars().count() > 1
             && self.port_string.chars().count() > 1
@@ -111,6 +112,7 @@ impl ConnectLayout {
                 server_name: self.servername_string.clone(),
                 server_port: self.port_string.clone(),
                 server_password: self.password_string.clone(),
+                push_to_talk_key,
             })
         } else {
             self.show_input_notice = true;

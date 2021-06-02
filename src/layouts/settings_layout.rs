@@ -30,6 +30,7 @@ pub struct SettingsLayout {
     pub ui_scaling_slider_value: i32,
     pub push_to_talk_key: KeyCode,
     pub ask_for_push_to_talk_button: bool,
+    pub push_to_talk_button_hint: &'static str,
 
     back_button: button::State,
     general_button: button::State,
@@ -51,6 +52,7 @@ impl Default for SettingsLayout {
             push_to_talk_button: button::State::default(),
             push_to_talk_key: KeyCode::KT,
             ask_for_push_to_talk_button: false,
+            push_to_talk_button_hint: "",
         }
     }
 }
@@ -151,6 +153,11 @@ impl SettingsLayout {
                                 .style(current_style.theme),
                             )
                             .push(Column::new().width(Length::FillPortion(70))),
+                    )
+                    .push(
+                        Text::new(self.push_to_talk_button_hint)
+                            .size(20)
+                            .color(current_style.get_message_author_color()),
                     );
             }
             CurrentActiveOption::About => {

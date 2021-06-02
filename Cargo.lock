@@ -629,6 +629,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "csfml-audio-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4e20d25b6f2c582dff0b82440dd2b6b6a3ae78eb07096ca226a64f02779da96"
+dependencies = [
+ "csfml-system-sys",
+ "sfml-build",
+]
+
+[[package]]
+name = "csfml-graphics-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b592b4e5f26de6d46b53f762a2a46e80826f69e008272d302a49e87c27a6c996"
+dependencies = [
+ "csfml-system-sys",
+ "csfml-window-sys",
+ "sfml-build",
+]
+
+[[package]]
+name = "csfml-system-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4019b7cb9ece70481603aaadb9a0094c9a6455d1a71d82d24c5a0b47c037cfaf"
+dependencies = [
+ "sfml-build",
+]
+
+[[package]]
+name = "csfml-window-sys"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e27076c2b6aafd377d396700f25bbf5020c695781d20aed6a399bef7ea351a17"
+dependencies = [
+ "csfml-system-sys",
+ "sfml-build",
+]
+
+[[package]]
 name = "d3d12"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2714,6 +2754,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "sfml"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4c72108133019d399b24d0c0bd179cc26aa2909b0001e4202d756e4c90c21b4"
+dependencies = [
+ "bitflags",
+ "csfml-audio-sys",
+ "csfml-graphics-sys",
+ "csfml-system-sys",
+ "csfml-window-sys",
+ "once_cell",
+ "widestring",
+]
+
+[[package]]
+name = "sfml-build"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53e0893aaf18583de27202b17007258377d5c4be16e1d0b601fd6943bc36c98b"
+
+[[package]]
 name = "shared_library"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2745,6 +2806,7 @@ dependencies = [
  "platform-dirs",
  "png",
  "rusty_audio",
+ "sfml",
  "system_wide_key_state",
 ]
 
@@ -3316,6 +3378,12 @@ dependencies = [
  "log",
  "wgpu",
 ]
+
+[[package]]
+name = "widestring"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c168940144dd21fd8046987c16a46a33d5fc84eec29ef9dcddc2ac9e31526b7c"
 
 [[package]]
 name = "winapi"
