@@ -16,6 +16,7 @@ use super::voice_player::*;
 use super::voice_recorder::*;
 use crate::global_params::*;
 use crate::services::net_service::*;
+use crate::InternalMessage;
 
 const INTERVAL_PROCESS_VOICE_MS: i32 = 10;
 const INTERVAL_WAIT_FOR_NEW_CHUNKS: u64 = 10;
@@ -66,7 +67,12 @@ impl AudioService {
         self.net_service = Some(net_service);
         self.master_output_volume = master_volume;
     }
-    pub fn add_user_voice_chunk(&mut self, username: String, voice_data: Vec<i16>) {
+    pub fn add_user_voice_chunk(
+        &mut self,
+        username: String,
+        voice_data: Vec<i16>,
+        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+    ) {
         let users_voice_data_guard = self.users_voice_data.lock().unwrap();
 
         let mut found = false;
@@ -91,7 +97,7 @@ impl AudioService {
                     let user_copy = Arc::clone(&users_voice_data_guard[found_index]);
                     let master_volume = self.master_output_volume;
                     thread::spawn(move || {
-                        AudioService::play_user_voice(user_copy, master_volume);
+                        AudioService::play_user_voice(user_copy, master_volume, internal_messages);
                     });
                 }
             }
@@ -102,24 +108,6 @@ impl AudioService {
                 file!(),
                 line!()
             );
-            // // create new user voice data struct
-            // let mut user_voice = UserVoiceData::new(username.clone());
-            // {
-            //     user_voice.chunks.push_back(voice_data);
-            //     *user_voice.mtx_output_playing.lock().unwrap() = true;
-            // }
-            // users_voice_data_guard.push(Arc::new(Mutex::new(user_voice)));
-
-            // let user_copy = Arc::clone(users_voice_data_guard.last().unwrap());
-            // let master_volume = self.master_output_volume;
-            // thread::spawn(move || {
-            //     AudioService::play_user_voice(
-            //         user_copy,
-            //         users_voice_copy,
-            //         username.clone(),
-            //         master_volume,
-            //     );
-            // });
         }
     }
     pub fn start_waiting_for_voice(
@@ -142,7 +130,11 @@ impl AudioService {
 }
 
 impl AudioService {
-    pub fn play_user_voice(user: Arc<Mutex<UserVoiceData>>, master_volume: i32) {
+    pub fn play_user_voice(
+        user: Arc<Mutex<UserVoiceData>>,
+        master_volume: i32,
+        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+    ) {
         let mut stop = false;
         let mut last_time_recv_chunk = chrono::Local::now();
 
@@ -202,6 +194,13 @@ impl AudioService {
             }
             user_guard.chunks.clear();
             _user_volume = user_guard.user_volume;
+
+            {
+                internal_messages
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::UserTalkOn(user_guard.username.clone()))
+            }
         }
 
         let mut volume_before = master_volume * _user_volume;
@@ -258,6 +257,13 @@ impl AudioService {
             let mut user_guard = user.lock().unwrap();
             user_guard.chunks.clear();
             *user_guard.mtx_output_playing.lock().unwrap() = false;
+
+            {
+                internal_messages
+                    .lock()
+                    .unwrap()
+                    .push(InternalMessage::UserTalkOff(user_guard.username.clone()))
+            }
         }
     }
     pub fn record_voice(push_to_talk_key: KeyCode, audio_service: Arc<Mutex<AudioService>>) {

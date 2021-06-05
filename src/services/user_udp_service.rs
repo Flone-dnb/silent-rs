@@ -255,7 +255,11 @@ impl UserUdpService {
                     voice_data_vec.push(_val);
                 }
 
-                audio_service_guard.add_user_voice_chunk(username, voice_data_vec);
+                audio_service_guard.add_user_voice_chunk(
+                    username,
+                    voice_data_vec,
+                    Arc::clone(&internal_messages),
+                );
             }
             None => {
                 return Err(format!(

@@ -98,6 +98,8 @@ pub enum InternalMessage {
         ping_ms: u16,
         try_again_number: u8, // when user was not found
     },
+    UserTalkOn(String),
+    UserTalkOff(String),
 }
 
 #[derive(Debug, Clone)]
@@ -220,6 +222,44 @@ impl Application for Silent {
                         }
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
+                        }
+                        InternalMessage::UserTalkOn(username) => {
+                            let _process_guard =
+                                self.main_layout.users_list.process_lock.lock().unwrap();
+
+                            let mut ok = false;
+
+                            for room in self.main_layout.users_list.rooms.iter_mut() {
+                                for user in room.users.iter_mut() {
+                                    if &user.user_data.username == username {
+                                        user.user_data.is_talking = true;
+                                        ok = true;
+                                        break;
+                                    }
+                                }
+                                if ok {
+                                    break;
+                                }
+                            }
+                        }
+                        InternalMessage::UserTalkOff(username) => {
+                            let _process_guard =
+                                self.main_layout.users_list.process_lock.lock().unwrap();
+
+                            let mut ok = false;
+
+                            for room in self.main_layout.users_list.rooms.iter_mut() {
+                                for user in room.users.iter_mut() {
+                                    if &user.user_data.username == username {
+                                        user.user_data.is_talking = false;
+                                        ok = true;
+                                        break;
+                                    }
+                                }
+                                if ok {
+                                    break;
+                                }
+                            }
                         }
                         InternalMessage::MoveUserToRoom { username, room_to } => {
                             if let Err(msg) = self.main_layout.move_user(&username, &room_to) {

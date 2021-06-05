@@ -218,7 +218,7 @@ impl UserList {
                 Scrollable::new(&mut self.scroll_state)
                     .width(Length::Fill)
                     .style(current_style.theme),
-                |scroll_area, room| scroll_area.push(room.get_ui()),
+                |scroll_area, room| scroll_area.push(room.get_ui(&current_style)),
             );
 
             Container::new(scroll_area)
@@ -258,7 +258,7 @@ impl RoomItem {
     pub fn add_user_from_user_data(&mut self, user_data: UserItemData) {
         self.users.push_back(UserItem::new_from_data(user_data))
     }
-    pub fn get_ui(&mut self) -> Column<MainMessage> {
+    pub fn get_ui(&mut self, current_style: &StyleTheme) -> Column<MainMessage> {
         let room_row = Row::new().push(
             Text::new(&self.room_data.name)
                 .color(Color::WHITE)
@@ -276,9 +276,9 @@ impl RoomItem {
 
         let column = Column::new().width(Length::Fill).push(room_button);
 
-        self.users
-            .iter_mut()
-            .fold(column, |column, user| column.push(user.get_ui()))
+        self.users.iter_mut().fold(column, |column, user| {
+            column.push(user.get_ui(&current_style))
+        })
     }
 }
 
@@ -301,6 +301,7 @@ impl UserItem {
                 username,
                 ping_ms,
                 volume: 100,
+                is_talking: false,
                 connected_time_point: Local::now(),
             },
             button_state: button::State::default(),
@@ -312,27 +313,39 @@ impl UserItem {
             button_state: button::State::default(),
         }
     }
-    pub fn get_ui(&mut self) -> Button<MainMessage> {
-        let content = Row::new()
-            .push(Text::new("    "))
-            .push(
+    pub fn get_ui(&mut self, current_style: &StyleTheme) -> Button<MainMessage> {
+        let mut content = Row::new().push(Text::new("    "));
+
+        if self.user_data.is_talking {
+            content = content.push(
+                Text::new(&self.user_data.username)
+                    .color(current_style.get_message_author_color())
+                    .size(23)
+                    .horizontal_alignment(HorizontalAlignment::Left)
+                    .width(Length::Shrink),
+            )
+        } else {
+            content = content.push(
                 Text::new(&self.user_data.username)
                     .color(Color::WHITE)
                     .size(23)
                     .horizontal_alignment(HorizontalAlignment::Left)
                     .width(Length::Shrink),
-            )
-            .push(
-                Text::new(String::from("  [") + &self.user_data.ping_ms.to_string()[..] + " ms]")
-                    .color(Color::from_rgb(
-                        128_f32 / 255.0,
-                        128_f32 / 255.0,
-                        128_f32 / 255.0,
-                    ))
-                    .size(17)
-                    .horizontal_alignment(HorizontalAlignment::Left)
-                    .width(Length::Shrink),
             );
+        }
+
+        content = content.push(
+            Text::new(String::from("  [") + &self.user_data.ping_ms.to_string()[..] + " ms]")
+                .color(Color::from_rgb(
+                    128_f32 / 255.0,
+                    128_f32 / 255.0,
+                    128_f32 / 255.0,
+                ))
+                .size(17)
+                .horizontal_alignment(HorizontalAlignment::Left)
+                .width(Length::Shrink),
+        );
+
         Button::new(&mut self.button_state, content)
             .width(Length::Fill)
             .style(default_theme::InteractiveTextButton)
@@ -347,6 +360,7 @@ pub struct UserItemData {
     pub username: String,
     pub ping_ms: u16,
     pub volume: u16,
+    pub is_talking: bool,
     pub connected_time_point: DateTime<Local>,
 }
 
@@ -356,6 +370,7 @@ impl Clone for UserItemData {
             username: self.username.clone(),
             ping_ms: self.ping_ms,
             volume: self.volume,
+            is_talking: self.is_talking,
             connected_time_point: self.connected_time_point,
         }
     }
@@ -366,6 +381,7 @@ impl UserItemData {
         UserItemData {
             username: String::from(""),
             ping_ms: 0,
+            is_talking: false,
             volume: 100,
             connected_time_point: Local::now(),
         }
