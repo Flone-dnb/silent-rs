@@ -261,26 +261,23 @@ impl MainLayout {
             .push(right.width(Length::FillPortion(35)));
 
         Modal::new(&mut self.modal_state, content, |state| {
-            Card::new(
-                Text::new("Information"),
-                Text::new(&state.message), //Text::new("Zombie ipsum reversus ab viral inferno, nam rick grimes malum cerebro. De carne lumbering animata corpora quaeritis. Summus brains sit​​, morbo vel maleficia? De apocalypsi gorger omero undead survivor dictum mauris. Hi mindless mortuis soulless creaturas, imo evil stalking monstra adventus resi dentevil vultus comedat cerebella viventium. Qui animated corpse, cricket bat max brucks terribilem incessu zomby. The voodoo sacerdos flesh eater, suscitat mortuos comedere carnem virus. Zonbi tattered for solum oculi eorum defunctis go lum cerebro. Nescio brains an Undead zombies. Sicut malus putrid voodoo horror. Nigh tofth eliv ingdead.")
-            )
-            .foot(
-                Row::new().spacing(10).padding(5).width(Length::Fill).push(
-                    Button::new(
-                        &mut state.ok_state,
-                        Text::new("Ok").horizontal_alignment(HorizontalAlignment::Center),
-                    )
-                    .width(Length::Fill)
-                    .on_press(MainMessage::ModalWindowMessage(
-                        ModalMessage::OkButtonPressed,
-                    )),
-                ),
-            )
-            .max_width(300)
-            //.width(Length::Shrink)
-            .on_close(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
-            .into()
+            Card::new(Text::new("Information"), Text::new(&state.message))
+                .foot(
+                    Row::new().spacing(10).padding(5).width(Length::Fill).push(
+                        Button::new(
+                            &mut state.ok_state,
+                            Text::new("Ok").horizontal_alignment(HorizontalAlignment::Center),
+                        )
+                        .width(Length::Fill)
+                        .on_press(MainMessage::ModalWindowMessage(
+                            ModalMessage::OkButtonPressed,
+                        )),
+                    ),
+                )
+                .max_width(300)
+                //.width(Length::Shrink)
+                .on_close(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
+                .into()
         })
         .backdrop(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
         .on_esc(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
