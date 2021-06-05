@@ -111,6 +111,7 @@ pub enum MainMessage {
     PortInputChanged(String),
     PasswordInputChanged(String),
     UIScalingSliderMoved(i32),
+    MasterOutputVolumeSliderMoved(i32),
     Tick(()),
     ModalWindowMessage(ModalMessage),
     ToSettingsButtonPressed,
@@ -206,13 +207,15 @@ impl Application for Silent {
                             let config = config.unwrap();
 
                             self.settings_layout.ui_scaling_slider_value = config.ui_scaling as i32;
+                            self.settings_layout.master_output_volume_slider_value =
+                                config.master_volume as i32;
                             self.settings_layout.push_to_talk_key = config.push_to_talk_button;
                             self.ui_scaling = config.ui_scaling as f64 / 100.0;
 
                             self.audio_service
                                 .lock()
                                 .unwrap()
-                                .init_net_service(Arc::clone(&self.net_service));
+                                .init(Arc::clone(&self.net_service), config.master_volume as i32);
                         }
                         InternalMessage::SystemIOError(msg) => {
                             self.main_layout.add_system_message(msg.clone());
@@ -623,6 +626,7 @@ impl Application for Silent {
 
                     self.settings_layout.ask_for_push_to_talk_button = false;
                     self.settings_layout.push_to_talk_button_hint = "";
+                    self.settings_layout.master_volume_slider_hint = "";
                 }
                 SettingsLayoutMessage::PushToTalkChangeButtonPressed => {
                     self.settings_layout.ask_for_push_to_talk_button = true;
@@ -631,6 +635,34 @@ impl Application for Silent {
                     opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
                 }
             },
+            MainMessage::MasterOutputVolumeSliderMoved(value) => {
+                self.settings_layout.master_output_volume_slider_value = value;
+                self.settings_layout.master_volume_slider_hint = "restart required";
+
+                // Save to config.
+                let config = UserConfig::new();
+                if let Err(msg) = &config {
+                    let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
+                    if !self.is_connected {
+                        self.connect_layout
+                            .set_connect_result(ConnectResult::Err(error_msg));
+                    } else {
+                        self.main_layout.add_system_message(error_msg);
+                    }
+                }
+
+                let mut config = config.unwrap();
+                config.master_volume = value as u16;
+                if let Err(msg) = config.save() {
+                    let error_msg = format!("{} at [{}, {}]", msg, file!(), line!());
+                    if !self.is_connected {
+                        self.connect_layout
+                            .set_connect_result(ConnectResult::Err(error_msg));
+                    } else {
+                        self.main_layout.add_system_message(error_msg);
+                    }
+                }
+            }
             MainMessage::UIScalingSliderMoved(value) => {
                 self.settings_layout.ui_scaling_slider_value = value;
                 self.ui_scaling = value as f64 / 100.0;
@@ -646,6 +678,7 @@ impl Application for Silent {
                         self.main_layout.add_system_message(error_msg);
                     }
                 }
+
                 let mut config = config.unwrap();
                 config.ui_scaling = value as u16;
                 if let Err(msg) = config.save() {

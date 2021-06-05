@@ -28,24 +28,29 @@ pub struct SettingsLayout {
     about_details: AboutDetails,
 
     pub ui_scaling_slider_value: i32,
+    pub master_output_volume_slider_value: i32,
     pub push_to_talk_key: KeyCode,
     pub ask_for_push_to_talk_button: bool,
     pub push_to_talk_button_hint: &'static str,
+    pub master_volume_slider_hint: &'static str,
 
     back_button: button::State,
     general_button: button::State,
     about_button: button::State,
     push_to_talk_button: button::State,
     ui_scaling_slider_state: slider::State,
+    master_output_volume_slider_state: slider::State,
 }
 
 impl Default for SettingsLayout {
     fn default() -> Self {
         SettingsLayout {
             ui_scaling_slider_value: 100,
+            master_output_volume_slider_value: 100,
             active_option: CurrentActiveOption::General,
             about_details: AboutDetails::default(),
             ui_scaling_slider_state: slider::State::default(),
+            master_output_volume_slider_state: slider::State::default(),
             back_button: button::State::default(),
             general_button: button::State::default(),
             about_button: button::State::default(),
@@ -53,6 +58,7 @@ impl Default for SettingsLayout {
             push_to_talk_key: KeyCode::KT,
             ask_for_push_to_talk_button: false,
             push_to_talk_button_hint: "",
+            master_volume_slider_hint: "",
         }
     }
 }
@@ -116,7 +122,7 @@ impl SettingsLayout {
                 }
 
                 right_content_column = right_content_column
-                    .push(Text::new("UI scaling").color(Color::WHITE))
+                    .push(Text::new("UI Scaling").color(Color::WHITE))
                     .push(
                         Row::new()
                             .push(
@@ -137,7 +143,33 @@ impl SettingsLayout {
                             .push(Column::new().width(Length::FillPortion(28))),
                     )
                     .push(Text::new(" ").color(Color::WHITE))
-                    .push(Text::new("Push-to-Talk button").color(Color::WHITE))
+                    .push(Text::new("Master Output Volume").color(Color::WHITE))
+                    .push(
+                        Row::new()
+                            .push(
+                                Slider::new(
+                                    &mut self.master_output_volume_slider_state,
+                                    RangeInclusive::new(VOLUME_MIN, VOLUME_MAX),
+                                    self.master_output_volume_slider_value,
+                                    MainMessage::MasterOutputVolumeSliderMoved,
+                                )
+                                .width(Length::FillPortion(50))
+                                .style(current_style.theme),
+                            )
+                            .push(Column::new().width(Length::FillPortion(2)))
+                            .push(
+                                Text::new(format!("{}%", self.master_output_volume_slider_value))
+                                    .width(Length::FillPortion(20)),
+                            )
+                            .push(Column::new().width(Length::FillPortion(28))),
+                    )
+                    .push(
+                        Text::new(self.master_volume_slider_hint)
+                            .size(20)
+                            .color(current_style.get_message_author_color()),
+                    )
+                    .push(Text::new(" ").color(Color::WHITE))
+                    .push(Text::new("Push-to-Talk Button").color(Color::WHITE))
                     .push(
                         Row::new()
                             .push(

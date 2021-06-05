@@ -1,6 +1,7 @@
 // External.
 use rusty_audio::Audio;
 use sfml::audio::SoundRecorderDriver;
+use sfml::audio::SoundSource;
 use sfml::audio::SoundStreamPlayer;
 use system_wide_key_state::*;
 
@@ -44,6 +45,7 @@ pub struct AudioService {
     net_service: Option<Arc<Mutex<NetService>>>,
     mtx_listen_push_to_talk: Mutex<bool>,
     users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
+    master_output_volume: i32,
 }
 
 impl Default for AudioService {
@@ -52,13 +54,15 @@ impl Default for AudioService {
             net_service: None,
             mtx_listen_push_to_talk: Mutex::new(false),
             users_voice_data: Arc::new(Mutex::new(Vec::new())),
+            master_output_volume: 0,
         }
     }
 }
 
 impl AudioService {
-    pub fn init_net_service(&mut self, net_service: Arc<Mutex<NetService>>) {
+    pub fn init(&mut self, net_service: Arc<Mutex<NetService>>, master_volume: i32) {
         self.net_service = Some(net_service);
+        self.master_output_volume = master_volume;
     }
     pub fn add_user_voice_chunk(&mut self, username: String, voice_data: Vec<i16>) {
         let users_voice_copy = Arc::clone(&self.users_voice_data);
@@ -84,11 +88,13 @@ impl AudioService {
                     // start output
                     *play_guard = true; // playing
                     let user_copy = Arc::clone(&users_voice_data_guard[found_index]);
+                    let master_volume = self.master_output_volume;
                     thread::spawn(move || {
                         AudioService::play_user_voice(
                             user_copy,
                             users_voice_copy,
                             username.clone(),
+                            master_volume,
                         );
                     });
                 }
@@ -103,8 +109,14 @@ impl AudioService {
             users_voice_data_guard.push(Arc::new(Mutex::new(user_voice)));
 
             let user_copy = Arc::clone(users_voice_data_guard.last().unwrap());
+            let master_volume = self.master_output_volume;
             thread::spawn(move || {
-                AudioService::play_user_voice(user_copy, users_voice_copy, username.clone());
+                AudioService::play_user_voice(
+                    user_copy,
+                    users_voice_copy,
+                    username.clone(),
+                    master_volume,
+                );
             });
         }
     }
@@ -132,6 +144,7 @@ impl AudioService {
         user: Arc<Mutex<UserVoiceData>>,
         users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
         username: String,
+        master_volume: i32,
     ) {
         let mut stop = false;
         let mut last_time_recv_chunk = chrono::Local::now();
@@ -210,6 +223,7 @@ impl AudioService {
             user_guard.chunks.clear();
         }
 
+        player.set_volume(master_volume as f32);
         player.play();
 
         // Wait for new chunks.
