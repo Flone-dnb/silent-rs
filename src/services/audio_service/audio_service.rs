@@ -134,6 +134,7 @@ impl AudioService {
         username: String,
     ) {
         let mut stop = false;
+        let mut last_time_recv_chunk = chrono::Local::now();
 
         loop {
             let mut sleep = true;
@@ -142,6 +143,7 @@ impl AudioService {
 
                 // check if end of voice message
                 if let Some(chunk) = user_guard.chunks.back() {
+                    last_time_recv_chunk = chrono::Local::now();
                     if chunk.len() == 0 {
                         // zero-sized chunk means end of voice message
                         // finished
@@ -152,6 +154,11 @@ impl AudioService {
                 if user_guard.chunks.len() >= MIN_CHUNKS_TO_START_PLAY {
                     sleep = false;
                 }
+            }
+
+            let time_delta = chrono::Local::now() - last_time_recv_chunk;
+            if time_delta.num_seconds() as u64 >= MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC {
+                stop = true;
             }
 
             if stop {
@@ -210,6 +217,8 @@ impl AudioService {
 
         stop = false;
 
+        last_time_recv_chunk = chrono::Local::now();
+
         loop {
             let mut sleep = true;
             {
@@ -217,6 +226,7 @@ impl AudioService {
 
                 if user_guard.chunks.len() != 0 {
                     sleep = false;
+                    last_time_recv_chunk = chrono::Local::now();
                     for chunk in user_guard.chunks.iter() {
                         if chunk.len() == 0 {
                             // last chunk
@@ -227,6 +237,11 @@ impl AudioService {
                     }
                     user_guard.chunks.clear();
                 }
+            }
+
+            let time_delta = chrono::Local::now() - last_time_recv_chunk;
+            if time_delta.num_seconds() as u64 >= MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC {
+                stop = true;
             }
 
             if stop {

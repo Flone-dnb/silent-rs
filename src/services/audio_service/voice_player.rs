@@ -5,6 +5,10 @@ use sfml::system::Time;
 // Std.
 use std::collections::VecDeque;
 use std::sync::mpsc;
+use std::time::Duration;
+
+// Custom
+use crate::global_params::*;
 
 pub struct VoicePlayer {
     sample_receiver: mpsc::Receiver<Vec<i16>>,
@@ -38,9 +42,20 @@ impl SoundStream for VoicePlayer {
 
                 while self.sample_receiver.try_recv().is_ok() {
                     // read more chunks
-                    let res = self.sample_receiver.recv();
+                    let res = self
+                        .sample_receiver
+                        .recv_timeout(Duration::from_secs(MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC));
                     if let Err(e) = res {
-                        panic!("error: {} at [{}, {}]", e, file!(), line!());
+                        match e {
+                            mpsc::RecvTimeoutError::Timeout => {
+                                // finish
+                                self.sample_chunks.clear();
+                                return (&mut self.finish_chunk, false);
+                            }
+                            _ => {
+                                panic!("error: {} at [{}, {}]", e, file!(), line!());
+                            }
+                        }
                     }
                     self.sample_chunks.push_back(res.unwrap());
 
@@ -57,9 +72,20 @@ impl SoundStream for VoicePlayer {
         if self.sample_chunks.len() == 0 {
             loop {
                 // wait, we need data to play
-                let res = self.sample_receiver.recv();
+                let res = self
+                    .sample_receiver
+                    .recv_timeout(Duration::from_secs(MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC));
                 if let Err(e) = res {
-                    panic!("error: {} at [{}, {}]", e, file!(), line!());
+                    match e {
+                        mpsc::RecvTimeoutError::Timeout => {
+                            // finish
+                            self.sample_chunks.clear();
+                            return (&mut self.finish_chunk, false);
+                        }
+                        _ => {
+                            panic!("error: {} at [{}, {}]", e, file!(), line!());
+                        }
+                    }
                 }
                 self.sample_chunks.push_back(res.unwrap());
 

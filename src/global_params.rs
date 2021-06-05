@@ -28,6 +28,8 @@ pub const IN_UDP_BUFFER_SIZE: usize = 1500;
 pub const USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT: u8 = 5; // when somebody connected and we already received his ping on UDP,
                                                                // but no info about user was received on TCP (so retry later)
 
+pub const MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC: u64 = 3;
+
 pub const NEW_MESSAGE_SOUND_PATH: &str = "res/sounds/newmessage.wav";
 pub const CONNECTED_SOUND_PATH: &str = "res/sounds/connect.wav";
 pub const DISCONNECT_SOUND_PATH: &str = "res/sounds/disconnect.wav";
