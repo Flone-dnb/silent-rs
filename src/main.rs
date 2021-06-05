@@ -112,6 +112,7 @@ pub enum MainMessage {
     PasswordInputChanged(String),
     UIScalingSliderMoved(i32),
     MasterOutputVolumeSliderMoved(i32),
+    UserVolumeChanged(i32),
     Tick(()),
     ModalWindowMessage(ModalMessage),
     ToSettingsButtonPressed,
@@ -262,6 +263,17 @@ impl Application for Silent {
                             self.main_layout.clear_all_users();
                         }
                         InternalMessage::UserConnected(username) => {
+                            {
+                                let audio_guard = self.audio_service.lock().unwrap();
+
+                                let mut users_audio_data_guard =
+                                    audio_guard.users_voice_data.lock().unwrap();
+
+                                users_audio_data_guard.push(Arc::new(Mutex::new(
+                                    UserVoiceData::new(username.clone()),
+                                )));
+                            }
+
                             if let Err(msg) = self.main_layout.add_user(
                                 username.clone(),
                                 String::from(""),
@@ -277,6 +289,36 @@ impl Application for Silent {
                             }
                         }
                         InternalMessage::UserDisconnected(username) => {
+                            {
+                                let audio_guard = self.audio_service.lock().unwrap();
+
+                                let mut users_audio_data_guard =
+                                    audio_guard.users_voice_data.lock().unwrap();
+
+                                let mut found = false;
+                                let mut found_i = 0usize;
+
+                                for (i, user) in users_audio_data_guard.iter().enumerate() {
+                                    let user_guard = user.lock().unwrap();
+                                    if &user_guard.username == username {
+                                        found = true;
+                                        found_i = i;
+                                        break;
+                                    }
+                                }
+
+                                if found {
+                                    users_audio_data_guard.remove(found_i);
+                                } else {
+                                    println!(
+                                        "warning: can't find user ('{}') at [{}, {}]",
+                                        username,
+                                        file!(),
+                                        line!()
+                                    );
+                                }
+                            }
+
                             if let Err(msg) = self.main_layout.remove_user(&username) {
                                 self.main_layout.add_system_message(msg);
                             }
@@ -285,6 +327,60 @@ impl Application for Silent {
                 }
                 guard_messages.clear();
                 guard_messages.append(&mut delayed_messages);
+            }
+            MainMessage::UserVolumeChanged(volume) => {
+                // Apply to audio service.
+                let audio_service_guard = self.audio_service.lock().unwrap();
+                let users_audio = audio_service_guard.users_voice_data.lock().unwrap();
+                for user in users_audio.iter() {
+                    let mut user_guard = user.lock().unwrap();
+                    if &user_guard.username
+                        == &self
+                            .main_layout
+                            .users_list
+                            .user_info_layout
+                            .user_data
+                            .username
+                    {
+                        user_guard.user_volume = volume;
+                        break;
+                    }
+                }
+
+                // Apply to data.
+                {
+                    let _process_guard = self.main_layout.users_list.process_lock.lock().unwrap();
+
+                    let mut ok = false;
+
+                    for room in self.main_layout.users_list.rooms.iter_mut() {
+                        for user in room.users.iter_mut() {
+                            if user.user_data.username
+                                == self
+                                    .main_layout
+                                    .users_list
+                                    .user_info_layout
+                                    .user_data
+                                    .username
+                            {
+                                user.user_data.volume = volume as u16;
+                                ok = true;
+                                break;
+                            }
+                        }
+
+                        if ok {
+                            break;
+                        }
+                    }
+                }
+
+                // Apply to UI.
+                self.main_layout
+                    .users_list
+                    .user_info_layout
+                    .user_data
+                    .volume = volume as u16;
             }
             MainMessage::ButtonPressed(event) => match event {
                 keyboard::Event::KeyPressed {
@@ -571,6 +667,17 @@ impl Application for Silent {
                                     break;
                                 }
                                 ConnectResult::InfoAboutOtherUser(user_info, room, ping_ms) => {
+                                    {
+                                        let audio_guard = self.audio_service.lock().unwrap();
+
+                                        let mut users_audio_data_guard =
+                                            audio_guard.users_voice_data.lock().unwrap();
+
+                                        users_audio_data_guard.push(Arc::new(Mutex::new(
+                                            UserVoiceData::new(user_info.username.clone()),
+                                        )));
+                                    }
+
                                     if let Err(msg) = self.main_layout.add_user(
                                         user_info.username,
                                         room,

@@ -40,7 +40,7 @@ pub enum MainLayoutMessage {
 #[derive(Debug)]
 pub struct MainLayout {
     pub chat_list: ChatList,
-    users_list: UserList,
+    pub users_list: UserList,
 
     pub connected_users: usize,
 

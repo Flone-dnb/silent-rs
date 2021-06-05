@@ -26,7 +26,8 @@ const MIN_CHUNKS_TO_START_PLAY: usize = 3;
 const INTERVAL_CHECK_PUSH_TO_TALK_MS: u64 = 5;
 
 pub struct UserVoiceData {
-    username: String,
+    pub username: String,
+    pub user_volume: i32,
     chunks: VecDeque<Vec<i16>>,
     mtx_output_playing: Mutex<bool>,
 }
@@ -37,14 +38,15 @@ impl UserVoiceData {
             username,
             chunks: VecDeque::new(),
             mtx_output_playing: Mutex::new(false),
+            user_volume: 100,
         }
     }
 }
 
 pub struct AudioService {
+    pub users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
     net_service: Option<Arc<Mutex<NetService>>>,
     mtx_listen_push_to_talk: Mutex<bool>,
-    users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
     master_output_volume: i32,
 }
 
@@ -65,8 +67,7 @@ impl AudioService {
         self.master_output_volume = master_volume;
     }
     pub fn add_user_voice_chunk(&mut self, username: String, voice_data: Vec<i16>) {
-        let users_voice_copy = Arc::clone(&self.users_voice_data);
-        let mut users_voice_data_guard = self.users_voice_data.lock().unwrap();
+        let users_voice_data_guard = self.users_voice_data.lock().unwrap();
 
         let mut found = false;
         let mut found_index = 0usize;
@@ -90,34 +91,35 @@ impl AudioService {
                     let user_copy = Arc::clone(&users_voice_data_guard[found_index]);
                     let master_volume = self.master_output_volume;
                     thread::spawn(move || {
-                        AudioService::play_user_voice(
-                            user_copy,
-                            users_voice_copy,
-                            username.clone(),
-                            master_volume,
-                        );
+                        AudioService::play_user_voice(user_copy, master_volume);
                     });
                 }
             }
         } else {
-            // create new user voice data struct
-            let mut user_voice = UserVoiceData::new(username.clone());
-            {
-                user_voice.chunks.push_back(voice_data);
-                *user_voice.mtx_output_playing.lock().unwrap() = true;
-            }
-            users_voice_data_guard.push(Arc::new(Mutex::new(user_voice)));
+            println!(
+                "warning: can't find user ('{}') to add voice chunk at [{}, {}]",
+                username,
+                file!(),
+                line!()
+            );
+            // // create new user voice data struct
+            // let mut user_voice = UserVoiceData::new(username.clone());
+            // {
+            //     user_voice.chunks.push_back(voice_data);
+            //     *user_voice.mtx_output_playing.lock().unwrap() = true;
+            // }
+            // users_voice_data_guard.push(Arc::new(Mutex::new(user_voice)));
 
-            let user_copy = Arc::clone(users_voice_data_guard.last().unwrap());
-            let master_volume = self.master_output_volume;
-            thread::spawn(move || {
-                AudioService::play_user_voice(
-                    user_copy,
-                    users_voice_copy,
-                    username.clone(),
-                    master_volume,
-                );
-            });
+            // let user_copy = Arc::clone(users_voice_data_guard.last().unwrap());
+            // let master_volume = self.master_output_volume;
+            // thread::spawn(move || {
+            //     AudioService::play_user_voice(
+            //         user_copy,
+            //         users_voice_copy,
+            //         username.clone(),
+            //         master_volume,
+            //     );
+            // });
         }
     }
     pub fn start_waiting_for_voice(
@@ -140,12 +142,7 @@ impl AudioService {
 }
 
 impl AudioService {
-    pub fn play_user_voice(
-        user: Arc<Mutex<UserVoiceData>>,
-        users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
-        username: String,
-        master_volume: i32,
-    ) {
+    pub fn play_user_voice(user: Arc<Mutex<UserVoiceData>>, master_volume: i32) {
         let mut stop = false;
         let mut last_time_recv_chunk = chrono::Local::now();
 
@@ -175,29 +172,11 @@ impl AudioService {
             }
 
             if stop {
-                // Remove user voice data from global vec.
+                // Clear data.
                 {
-                    let mut users_voice_data_guard = users_voice_data.lock().unwrap();
-                    let mut index = 0usize;
-                    let mut found = false;
-                    for (i, user) in users_voice_data_guard.iter().enumerate() {
-                        if user.lock().unwrap().username == username {
-                            index = i;
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if found {
-                        users_voice_data_guard.remove(index);
-                    } else {
-                        println!(
-                            "warning: not found user voice data with 'username': '{}' at [{}, {}]",
-                            username,
-                            file!(),
-                            line!()
-                        );
-                    }
+                    let mut user_guard = user.lock().unwrap();
+                    user_guard.chunks.clear();
+                    *user_guard.mtx_output_playing.lock().unwrap() = false;
                 }
                 return;
             } else if sleep {
@@ -213,6 +192,7 @@ impl AudioService {
         let mut player = SoundStreamPlayer::new(&mut voice_player);
 
         let mut _sent_chunks: usize = 0;
+        let mut _user_volume = 100;
         // Send initial chunks.
         {
             let mut user_guard = user.lock().unwrap();
@@ -221,9 +201,11 @@ impl AudioService {
                 _sent_chunks += 1;
             }
             user_guard.chunks.clear();
+            _user_volume = user_guard.user_volume;
         }
 
-        player.set_volume(master_volume as f32);
+        let mut volume_before = master_volume * _user_volume;
+        player.set_volume(master_volume as f32 * (_user_volume as f32 / 100.0));
         player.play();
 
         // Wait for new chunks.
@@ -239,6 +221,11 @@ impl AudioService {
                 let mut user_guard = user.lock().unwrap();
 
                 if user_guard.chunks.len() != 0 {
+                    if volume_before != master_volume * user_guard.user_volume {
+                        volume_before = master_volume * user_guard.user_volume;
+                        player.set_volume(master_volume as f32 * (_user_volume as f32 / 100.0));
+                    }
+
                     sleep = false;
                     last_time_recv_chunk = chrono::Local::now();
                     for chunk in user_guard.chunks.iter() {
@@ -266,29 +253,11 @@ impl AudioService {
             }
         }
 
-        // Remove user voice data from global vec.
+        // Clear data.
         {
-            let mut users_voice_data_guard = users_voice_data.lock().unwrap();
-            let mut index = 0usize;
-            let mut found = false;
-            for (i, user) in users_voice_data_guard.iter().enumerate() {
-                if user.lock().unwrap().username == username {
-                    index = i;
-                    found = true;
-                    break;
-                }
-            }
-
-            if found {
-                users_voice_data_guard.remove(index);
-            } else {
-                println!(
-                    "warning: not found user voice data with 'username': '{}' at [{}, {}]",
-                    username,
-                    file!(),
-                    line!()
-                );
-            }
+            let mut user_guard = user.lock().unwrap();
+            user_guard.chunks.clear();
+            *user_guard.mtx_output_playing.lock().unwrap() = false;
         }
     }
     pub fn record_voice(push_to_talk_key: KeyCode, audio_service: Arc<Mutex<AudioService>>) {

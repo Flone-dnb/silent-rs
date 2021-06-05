@@ -20,12 +20,12 @@ use crate::MainMessage;
 
 #[derive(Debug)]
 pub struct UserList {
-    rooms: LinkedList<RoomItem>,
-    user_info_layout: UserInfo,
+    pub rooms: LinkedList<RoomItem>,
+    pub user_info_layout: UserInfo,
 
     show_user_info: bool,
 
-    process_lock: Mutex<()>,
+    pub process_lock: Mutex<()>,
 
     scroll_state: scrollable::State,
 }
@@ -239,7 +239,7 @@ impl UserList {
 #[derive(Debug)]
 pub struct RoomItem {
     room_data: RoomItemData,
-    users: LinkedList<UserItem>,
+    pub users: LinkedList<UserItem>,
 
     pub button_state: button::State,
 }
@@ -289,7 +289,7 @@ pub struct RoomItemData {
 
 #[derive(Debug)]
 pub struct UserItem {
-    user_data: UserItemData,
+    pub user_data: UserItemData,
 
     pub button_state: button::State,
 }
@@ -300,6 +300,7 @@ impl UserItem {
             user_data: UserItemData {
                 username,
                 ping_ms,
+                volume: 100,
                 connected_time_point: Local::now(),
             },
             button_state: button::State::default(),
@@ -345,6 +346,7 @@ impl UserItem {
 pub struct UserItemData {
     pub username: String,
     pub ping_ms: u16,
+    pub volume: u16,
     pub connected_time_point: DateTime<Local>,
 }
 
@@ -353,6 +355,7 @@ impl Clone for UserItemData {
         UserItemData {
             username: self.username.clone(),
             ping_ms: self.ping_ms,
+            volume: self.volume,
             connected_time_point: self.connected_time_point,
         }
     }
@@ -363,6 +366,7 @@ impl UserItemData {
         UserItemData {
             username: String::from(""),
             ping_ms: 0,
+            volume: 100,
             connected_time_point: Local::now(),
         }
     }
