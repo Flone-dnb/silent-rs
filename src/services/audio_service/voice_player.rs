@@ -33,76 +33,36 @@ impl SoundStream for VoicePlayer {
     /// and `keep_playing` tells the streaming loop whether to keep playing or to stop.
     fn get_data(&mut self) -> (&mut [i16], bool) {
         if self.sample_chunks.len() > 0 {
-            // remove old chunk
-            if self.sample_chunks.len() == 1 {
-                self.sample_chunks.clear();
-                // now wait for new data (below)
-            } else {
-                self.sample_chunks.pop_front();
-
-                while self.sample_receiver.try_recv().is_ok() {
-                    // read more chunks
-                    let res = self
-                        .sample_receiver
-                        .recv_timeout(Duration::from_secs(MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC));
-                    if let Err(e) = res {
-                        match e {
-                            mpsc::RecvTimeoutError::Timeout => {
-                                // finish
-                                self.sample_chunks.clear();
-                                return (&mut self.finish_chunk, false);
-                            }
-                            _ => {
-                                panic!("error: {} at [{}, {}]", e, file!(), line!());
-                            }
-                        }
-                    }
-                    self.sample_chunks.push_back(res.unwrap());
-
-                    if self.sample_chunks.back().unwrap().len() == 0 {
-                        // zero-sized chunk means end of voice message
-                        // finished
-                        self.sample_chunks.clear();
-                        return (&mut self.finish_chunk, false);
-                    }
-                }
-            }
+            self.sample_chunks.pop_front();
         }
 
         if self.sample_chunks.len() == 0 {
-            loop {
-                // wait, we need data to play
-                let res = self
-                    .sample_receiver
-                    .recv_timeout(Duration::from_secs(MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC));
-                if let Err(e) = res {
-                    match e {
-                        mpsc::RecvTimeoutError::Timeout => {
-                            // finish
-                            self.sample_chunks.clear();
-                            return (&mut self.finish_chunk, false);
-                        }
-                        _ => {
-                            panic!("error: {} at [{}, {}]", e, file!(), line!());
-                        }
+            // wait, we need data to play
+            let res = self
+                .sample_receiver
+                .recv_timeout(Duration::from_secs(MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC));
+            if let Err(e) = res {
+                match e {
+                    mpsc::RecvTimeoutError::Timeout => {
+                        // finish
+                        self.sample_chunks.clear();
+                        return (&mut self.finish_chunk, false);
+                    }
+                    _ => {
+                        panic!("error: {} at [{}, {}]", e, file!(), line!());
                     }
                 }
-                self.sample_chunks.push_back(res.unwrap());
+            }
+            self.sample_chunks.push_back(res.unwrap());
 
-                if self.sample_chunks.back().unwrap().len() == 0 {
-                    // zero-sized chunk means end of voice message
-                    // finished
-                    self.sample_chunks.clear();
-                    return (&mut self.finish_chunk, false);
-                }
-
-                if self.sample_receiver.try_recv().is_err() {
-                    break; // no more data for now
-                }
+            if self.sample_chunks.back().unwrap().len() == 0 {
+                // zero-sized chunk means end of voice message
+                // finished
+                self.sample_chunks.clear();
+                return (&mut self.finish_chunk, false);
             }
         }
 
-        println!("ready chunks: {}", self.sample_chunks.len());
         (&mut self.sample_chunks[0], true)
     }
     fn seek(&mut self, _offset: Time) {

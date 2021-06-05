@@ -8,6 +8,7 @@ use num_traits::FromPrimitive;
 // Std.
 use std::io::ErrorKind;
 use std::net::*;
+use std::sync::MutexGuard;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -146,7 +147,7 @@ impl UserUdpService {
         udp_socket: &UdpSocket,
         buf: &mut [u8],
         internal_messages: &Arc<Mutex<Vec<InternalMessage>>>,
-        audio_service: &Arc<Mutex<AudioService>>,
+        audio_service_guard: &mut MutexGuard<AudioService>,
     ) -> Result<(), String> {
         match FromPrimitive::from_u8(buf[0]) {
             Some(ServerMessageUdp::PingCheck) => {
@@ -254,10 +255,7 @@ impl UserUdpService {
                     voice_data_vec.push(_val);
                 }
 
-                audio_service
-                    .lock()
-                    .unwrap()
-                    .add_user_voice_chunk(username, voice_data_vec);
+                audio_service_guard.add_user_voice_chunk(username, voice_data_vec);
             }
             None => {
                 return Err(format!(

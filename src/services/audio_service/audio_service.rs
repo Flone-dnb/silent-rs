@@ -310,6 +310,7 @@ impl AudioService {
                     if let Err(e) = res {
                         panic!("error: {} at [{}, {}]", e, file!(), line!());
                     }
+
                     let mut current_chunk = res.unwrap();
 
                     samples.append(&mut current_chunk);
@@ -320,13 +321,13 @@ impl AudioService {
                         {
                             // Send to net service.
                             let audio_service_guard = audio_service.lock().unwrap();
-
                             let net_service_guard = audio_service_guard
                                 .net_service
                                 .as_ref()
                                 .unwrap()
                                 .lock()
                                 .unwrap();
+
                             net_service_guard
                                 .user_udp_service
                                 .lock()

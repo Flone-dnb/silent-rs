@@ -554,12 +554,27 @@ impl NetService {
 
             // handle received data
             {
+                // TODO: fix this (don't lock audio service that early)
+                // [current architecture design requires locking audio service here (before locking udp service)]
+                // when talking about voice messages, this thread will lock udp service first (at .handle_message() below)
+                // and inside of handle_message() (if we received a voice message) will lock audio service
+                // but if we are already playing voice right now
+                // audio service (when recorded a new chunk of voice) will lock the audio service to access the udp service
+                // a deadlock will occur, due to this:
+                // [this thread]: locks udp service to handle voice message (not locked audio service yet)
+                // [voice recorder thread]: locks audio service to access udp service (not locked udp service yet)
+                // [this thread]: trying to lock audio service to access it in the end of the handle_message()
+                // but it's locked by the voice recorder thread
+                // [voice recorder thread]: trying to lock udp service to send a voice message
+                // but it's locked by this thread
+                let mut audio_service_guard = audio_service.lock().unwrap();
+
                 // this might sleep a little (inside of handle_message())
                 match user_udp_service.lock().unwrap().handle_message(
                     &udp_socket,
                     &mut in_buf,
                     &internal_messages,
-                    &audio_service,
+                    &mut audio_service_guard,
                 ) {
                     Ok(()) => {}
                     Err(msg) => {
