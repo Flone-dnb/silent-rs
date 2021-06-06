@@ -1,0 +1,122 @@
+[package]
+name = "sfml"
+description = "Rust binding for sfml"
+version = "0.16.0"
+authors = ["Jeremy Letang <letang.jeremy@gmail.com>"]
+documentation = "https://docs.rs/sfml"
+repository = "https://github.com/jeremyletang/rust-sfml"
+license = "zlib-acknowledgement"
+keywords = ["sfml", "multimedia", "game"]
+readme = "README.md"
+edition = "2018"
+
+[features]
+default = ["audio"]
+window = ["csfml-window-sys", "bitflags", "once_cell", "widestring"]
+graphics = ["window", "csfml-graphics-sys"]
+audio = ["csfml-audio-sys"]
+# Used to skip running certain tests on CI, since it's running in a headless environment.
+ci-headless = []
+
+[dependencies.once_cell]
+version = "1.7.2"
+optional = true
+
+[dependencies.widestring]
+version = "0.4.3"
+optional = true
+
+[dependencies.bitflags]
+version = "1.2.1"
+optional = true
+
+[dependencies.csfml-system-sys]
+path = "ffi/csfml-system-sys"
+version = "0.6.0"
+
+[dependencies.csfml-window-sys]
+path = "ffi/csfml-window-sys"
+version = "0.6.0"
+optional = true
+
+[dependencies.csfml-graphics-sys]
+path = "ffi/csfml-graphics-sys"
+version = "0.6.0"
+optional = true
+
+[dependencies.csfml-audio-sys]
+path = "ffi/csfml-audio-sys"
+version = "0.6.0"
+optional = true
+
+[dev-dependencies]
+rand = "0.8.3"
+
+[lib]
+name = "sfml"
+
+[[example]]
+name = "borrowed-resources"
+required-features = ["graphics"]
+
+[[example]]
+name = "custom-drawable"
+required-features = ["graphics"]
+
+[[example]]
+name = "custom-shape"
+required-features = ["graphics"]
+
+[[example]]
+name = "custom-sound-stream"
+required-features = ["audio"]
+
+[[example]]
+name = "mouse"
+required-features = ["graphics"]
+
+[[example]]
+name = "music-stream"
+required-features = ["audio"]
+
+[[example]]
+name = "pong"
+required-features = ["graphics", "audio"]
+
+[[example]]
+name = "sound-capture"
+required-features = ["audio"]
+
+[[example]]
+name = "sound"
+required-features = ["audio"]
+
+[[example]]
+name = "unicode-text-entry"
+required-features = ["graphics"]
+
+[[example]]
+name = "vertex-arrays"
+required-features = ["graphics"]
+
+[[example]]
+name = "shader"
+required-features = ["graphics"]
+
+[[example]]
+name = "custom-sound-recorder"
+required-features = ["audio"]
+
+[[example]]
+name = "cursor"
+required-features = ["graphics"]
+
+[[example]]
+name = "resource-holder"
+required-features = ["graphics", "audio"]
+
+[[example]]
+name = "vertex-buffers"
+required-features = ["graphics"]
+
+[workspace]

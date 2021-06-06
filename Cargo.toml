@@ -19,4 +19,4 @@ num-traits = "0.2"
 num-derive = "0.3"
 rusty_audio = "1.2.1"
 system_wide_key_state = "1.1.3"
-sfml = "0.16.0"
+sfml = {path = "ext/rust-sfml-0.16.0"}
