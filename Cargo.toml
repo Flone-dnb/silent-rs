@@ -1,6 +1,6 @@
 [package]
 name = "silent"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Aleksandr \"Flone\" Tretyakov (github.com/Flone-dnb)"]
 edition = "2018"
 license = "Zlib"
