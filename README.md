@@ -11,7 +11,6 @@ sudo apt install libasound2-dev
 sudo apt install libsfml-dev
 sudo apt install libcsfml-dev
 </pre>
-<br>
 <h4> Other </h4>
 Install rust-sfml from https://github.com/jeremyletang/rust-sfml/wiki
 <h3> 2. Build </h3>
