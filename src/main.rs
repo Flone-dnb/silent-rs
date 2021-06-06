@@ -1,4 +1,5 @@
 #![feature(linked_list_remove)]
+#![windows_subsystem = "windows"]
 
 // External.
 use chrono::prelude::*;
