@@ -2941,9 +2941,9 @@ dependencies = [
 
 [[package]]
 name = "system_wide_key_state"
-version = "1.1.2"
+version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f1554ab89017a202407188207b9dbb2fd4f0b44c3f65ebed40691847250f14"
+checksum = "db4c72c5310096703edf684d74bc94225f7422c996d11ab8b2982a6c1c1da173"
 dependencies = [
  "num-derive",
  "num-traits",
