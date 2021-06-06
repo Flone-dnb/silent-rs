@@ -405,7 +405,7 @@ impl NetService {
         audio_service: Arc<Mutex<AudioService>>,
         push_to_talk_key: KeyCode,
     ) {
-        let udp_socket = UdpSocket::bind("127.0.0.1:0"); // random port
+        let udp_socket = UdpSocket::bind("0.0.0.0:0");
         if let Err(e) = udp_socket {
             internal_messages
                 .lock()
