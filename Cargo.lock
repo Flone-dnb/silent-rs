@@ -2917,7 +2917,7 @@ checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
 
 [[package]]
 name = "silent"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "aes",
  "block-modes",
