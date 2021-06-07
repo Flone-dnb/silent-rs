@@ -1,9 +1,15 @@
 // External.
+use aes::Aes128;
+use block_modes::block_padding::Pkcs7;
+use block_modes::{BlockMode, Ecb};
 use bytevec::{ByteDecodable, ByteEncodable};
+use num::bigint::ToBigUint;
+use num::BigUint;
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::FromPrimitive;
 use num_traits::ToPrimitive;
+use rand::Rng;
 
 // Std.
 use std::io::prelude::*;
@@ -98,6 +104,7 @@ pub struct UserTcpService {
     pub server_password: String,
     pub tcp_socket: Option<TcpStream>,
     pub io_tcp_mutex: Mutex<()>,
+    pub secret_key: Vec<u8>,
 }
 
 impl UserTcpService {
@@ -110,7 +117,219 @@ impl UserTcpService {
                 username: String::from(""),
             },
             io_tcp_mutex: Mutex::new(()),
+            secret_key: Vec::new(),
         }
+    }
+    pub fn establish_secure_connection(&mut self) -> Result<Vec<u8>, HandleMessageResult> {
+        // Generate secret key 'b'.
+
+        let mut rng = rand::thread_rng();
+        let b = rng.gen_range(1000000u64..10000000000000000000u64);
+
+        // Receive 2 int values: p, g values.
+
+        let mut p_g_buf = vec![0u8; std::mem::size_of::<u32>() * 2];
+        loop {
+            match self.read_from_socket(&mut p_g_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+
+        // Read p and g value.
+
+        let p = u32::decode::<u32>(&p_g_buf[0..std::mem::size_of::<u32>()]);
+        if let Err(e) = p {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "u32::decode::<u32>() failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let p = p.unwrap();
+
+        let g = u32::decode::<u32>(
+            &p_g_buf[std::mem::size_of::<u32>()..std::mem::size_of::<u32>() * 2],
+        );
+        if let Err(e) = g {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "u32::decode::<u32>() failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let g = g.unwrap();
+
+        // Calculate the open key B.
+
+        let g_big = g.to_biguint().unwrap();
+        let b_big = b.to_biguint().unwrap();
+        let p_big = p.to_biguint().unwrap();
+        let b_open = g_big.modpow(&b_big, &p_big);
+
+        // Receive the open key A size.
+
+        let mut a_open_len_buf = vec![0u8; std::mem::size_of::<u64>()];
+        loop {
+            match self.read_from_socket(&mut a_open_len_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+
+        let a_open_len = u64::decode::<u64>(&a_open_len_buf);
+        if let Err(e) = a_open_len {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "u64::decode::<u64>() failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let a_open_len = a_open_len.unwrap();
+
+        // Receive the open key A.
+
+        let mut a_open_buf = vec![0u8; a_open_len as usize];
+        loop {
+            match self.read_from_socket(&mut a_open_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+
+        let a_open_big = BigUint::from_bytes_le(&a_open_buf);
+
+        // Prepare to send open key B.
+
+        let mut b_open_buf = b_open.to_bytes_le();
+
+        // Send open key 'B' size.
+        let b_open_len = b_open_buf.len() as u64;
+        let b_open_len_buf = u64::encode::<u64>(&b_open_len);
+        if let Err(e) = b_open_len_buf {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "u64::encode::<u64>() failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let mut b_open_len_buf = b_open_len_buf.unwrap();
+        loop {
+            match self.write_to_socket(&mut b_open_len_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+
+        // Send open key B.
+        loop {
+            match self.write_to_socket(&mut b_open_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+
+        // Calculate the secret key.
+
+        let secret_key = a_open_big.modpow(&b_big, &p_big);
+
+        let mut secret_key_str = secret_key.to_str_radix(10);
+
+        if secret_key_str.len() < 16 {
+            loop {
+                secret_key_str += &secret_key_str.clone();
+
+                if secret_key_str.len() >= 16 {
+                    break;
+                }
+            }
+        }
+
+        Ok(Vec::from(&secret_key_str[0..16]))
     }
     pub fn enter_room(&mut self, room: &str) -> HandleMessageResult {
         if self.tcp_socket.is_none() {
@@ -218,8 +437,8 @@ impl UserTcpService {
         // (u16) - data ID (user message)
         // (u16) - username.len()
         // (size) - username
-        // (u16) - message.len()
-        // (size) - message
+        // (u16) - message (encrypted).len()
+        // (size) - message (encrypted)
 
         // Prepare data ID buffer.
         let data_id = ClientMessageTcp::UserMessage.to_u16();
@@ -260,30 +479,32 @@ impl UserTcpService {
         // Prepare username buffer.
         let mut username_buf = Vec::from(self.user_info.username.as_bytes());
 
-        // Prepare message len buffer.
-        let message_len = message.len() as u16;
-        let message_len_buf = u16::encode::<u16>(&message_len);
-        if let Err(e) = message_len_buf {
+        // Encrypt message.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypted_message = cipher.encrypt_vec(message.as_bytes());
+
+        // Prepare encrypted message len buffer.
+        let encrypted_message_len = encrypted_message.len() as u16;
+        let encrypted_message_len_buf = u16::encode::<u16>(&encrypted_message_len);
+        if let Err(e) = encrypted_message_len_buf {
             return HandleMessageResult::OtherErr(format!(
                 "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                message_len,
+                encrypted_message_len,
                 e,
                 file!(),
                 line!()
             ));
         }
-        let mut message_len_buf = message_len_buf.unwrap();
-
-        // Prepare message buffer.
-        let mut message_buf = Vec::from(message.as_bytes());
+        let mut encrypted_message_len_buf = encrypted_message_len_buf.unwrap();
 
         // Merge all to one buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
         out_buffer.append(&mut data_id_buf);
         out_buffer.append(&mut username_len_buf);
         out_buffer.append(&mut username_buf);
-        out_buffer.append(&mut message_len_buf);
-        out_buffer.append(&mut message_buf);
+        out_buffer.append(&mut encrypted_message_len_buf);
+        out_buffer.append(&mut encrypted_message);
 
         // Send to server.
         loop {
@@ -428,9 +649,9 @@ impl UserTcpService {
                     .push(InternalMessage::UserDisconnected(username));
             }
             ServerMessageTcp::UserMessage => {
-                let mut message = String::new();
-                match self.read_u16_and_string_from_socket() {
-                    Ok(name) => message = name,
+                let mut encrypted_message = Vec::new();
+                match self.read_u16_and_vec_from_socket() {
+                    Ok(msg) => encrypted_message = msg,
                     Err(io_e) => match io_e {
                         IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
                         IoResult::Err(msg) => {
@@ -444,6 +665,31 @@ impl UserTcpService {
                         _ => {}
                     },
                 }
+
+                // Decrypt message.
+                type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+                let cipher =
+                    Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+                let decrypted_message = cipher.decrypt_vec(&encrypted_message);
+                if let Err(e) = decrypted_message {
+                    return HandleMessageResult::OtherErr(format!(
+                        "cipher.decrypt_vec() failed, error: {} at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    ));
+                }
+                let user_message = decrypted_message.unwrap();
+                let message = String::from_utf8(user_message);
+                if let Err(e) = message {
+                    return HandleMessageResult::OtherErr(format!(
+                        "String::from_utf8() failed, error: {} at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    ));
+                }
+                let message = message.unwrap();
 
                 internal_messages_ok_only
                     .lock()
@@ -926,6 +1172,60 @@ impl UserTcpService {
         }
 
         Ok(string.unwrap())
+    }
+    fn read_u16_and_vec_from_socket(&mut self) -> Result<Vec<u8>, IoResult> {
+        let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
+        loop {
+            match self.read_from_socket(&mut len_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                IoResult::FIN => return Err(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return Err(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+            };
+        }
+
+        let len = u16::decode::<u16>(&len_buf);
+        if let Err(e) = len {
+            return Err(IoResult::Err(format!(
+                "u16::decode::<u16>() failed, error: failed to decode (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let len = len.unwrap();
+
+        let mut vec_buf = vec![0u8; len as usize];
+        loop {
+            match self.read_from_socket(&mut vec_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => break,
+                IoResult::FIN => return Err(IoResult::FIN),
+                IoResult::Err(msg) => {
+                    return Err(IoResult::Err(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+            };
+        }
+
+        Ok(vec_buf)
     }
     fn read_u8_and_string_from_socket(&mut self) -> Result<String, IoResult> {
         let mut len_buf = vec![0u8; std::mem::size_of::<u8>()];

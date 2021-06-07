@@ -216,6 +216,52 @@ impl NetService {
         // Connect.
         {
             let mut user_service_guard = user_tcp_service.lock().unwrap();
+
+            match user_service_guard.establish_secure_connection() {
+                Ok(key) => {
+                    user_service_guard.secret_key = key;
+                }
+                Err(e) => {
+                    match e {
+                        HandleMessageResult::Ok => {}
+                        HandleMessageResult::IOError(err) => match err {
+                            IoResult::FIN => {
+                                internal_messages.lock().unwrap().push(
+                                    InternalMessage::SystemIOError(String::from(
+                                        "The server closed connection.",
+                                    )),
+                                );
+                                return;
+                            }
+                            IoResult::Err(msg) => {
+                                internal_messages.lock().unwrap().push(
+                                    InternalMessage::SystemIOError(format!(
+                                        "{} at [{}, {}]",
+                                        msg,
+                                        file!(),
+                                        line!()
+                                    )),
+                                );
+                                return;
+                            }
+                            _ => {}
+                        },
+                        HandleMessageResult::OtherErr(msg) => {
+                            internal_messages
+                                .lock()
+                                .unwrap()
+                                .push(InternalMessage::SystemIOError(format!(
+                                    "{} at [{}, {}]",
+                                    msg,
+                                    file!(),
+                                    line!()
+                                )));
+                            return;
+                        }
+                    }
+                }
+            }
+
             match user_service_guard.connect_user(sender) {
                 ConnectResult::Ok => {
                     // Get info about all other users.
@@ -273,6 +319,7 @@ impl NetService {
             let server_port_copy = config.server_port.clone();
             let internal_messages_copy = Arc::clone(&internal_messages);
             let push_to_talk_button = config.push_to_talk_key;
+            let secret_key_copy = user_tcp_service.lock().unwrap().secret_key.clone();
             thread::spawn(move || {
                 NetService::udp_service(
                     username_copy,
@@ -282,6 +329,7 @@ impl NetService {
                     user_udp_service,
                     audio_service,
                     push_to_talk_button,
+                    secret_key_copy,
                 )
             });
         }
@@ -359,7 +407,7 @@ impl NetService {
                                 _fin = true;
                                 internal_messages.lock().unwrap().push(
                                     InternalMessage::SystemIOError(format!(
-                                        "{} at [{}, {}",
+                                        "{} at [{}, {}]",
                                         msg,
                                         file!(),
                                         line!()
@@ -404,6 +452,7 @@ impl NetService {
         user_udp_service: Arc<Mutex<UserUdpService>>,
         audio_service: Arc<Mutex<AudioService>>,
         push_to_talk_key: KeyCode,
+        secret_key: Vec<u8>,
     ) {
         let udp_socket = UdpSocket::bind("0.0.0.0:0");
         if let Err(e) = udp_socket {
@@ -461,10 +510,10 @@ impl NetService {
                     )));
                 return;
             }
-            user_udp_service
-                .lock()
-                .unwrap()
-                .assign_socket_and_name(res.unwrap(), username);
+
+            let mut udp_service_guard = user_udp_service.lock().unwrap();
+            udp_service_guard.assign_socket_and_name(res.unwrap(), username);
+            udp_service_guard.secret_key = secret_key;
         }
 
         match user_udp_service.lock().unwrap().connect(&udp_socket) {

@@ -1,4 +1,7 @@
 // External.
+use aes::Aes128;
+use block_modes::block_padding::Pkcs7;
+use block_modes::{BlockMode, Ecb};
 use bytevec::{ByteDecodable, ByteEncodable};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
@@ -37,6 +40,7 @@ pub struct UserUdpService {
     io_udp_mutex: Mutex<()>,
     udp_socket_copy: Option<UdpSocket>,
     username: String,
+    pub secret_key: Vec<u8>,
 }
 
 impl UserUdpService {
@@ -46,6 +50,7 @@ impl UserUdpService {
             io_udp_mutex: Mutex::new(()),
             udp_socket_copy: None,
             username: String::from(""),
+            secret_key: Vec::new(),
         }
     }
     pub fn assign_socket_and_name(&mut self, socket: UdpSocket, username: String) {
@@ -55,22 +60,10 @@ impl UserUdpService {
     pub fn send_voice_message(&mut self, voice_chunk: Vec<i16>) {
         // prepare voice packet:
         // (u8) - packet type (ClientMessageUdp::VoicePacket)
-        // (u16) - voice data size in bytes
-        // (size) - voice data
+        // (u16) - voice data (encrypted) size in bytes
+        // (size) - voice data (encrypted)
 
         let packet_id = ClientMessageUdp::VoicePacket.to_u8().unwrap();
-        let voice_data_len: u16 = (voice_chunk.len() * std::mem::size_of::<i16>()) as u16;
-
-        let voice_data_len_buf = u16::encode::<u16>(&voice_data_len);
-        if let Err(e) = voice_data_len_buf {
-            panic!(
-                "An error occurred, error: {}, at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            );
-        }
-        let mut voice_data_len_buf = voice_data_len_buf.unwrap();
 
         // Convert voice_chunk from Vec<i16> to Vec<u8>
         let mut voice_data: Vec<u8> = Vec::new();
@@ -94,10 +87,29 @@ impl UserUdpService {
             voice_data.append(&mut vec);
         }
 
+        // Encrypt voice data.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypted_message = cipher.encrypt_vec(&voice_data);
+
+        // voice data (encrypted) len
+        let encrypted_voice_data_len: u16 = encrypted_message.len() as u16;
+
+        let encrypted_voice_data_len_buf = u16::encode::<u16>(&encrypted_voice_data_len);
+        if let Err(e) = encrypted_voice_data_len_buf {
+            panic!(
+                "An error occurred, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            );
+        }
+        let mut encrypted_voice_data_len_buf = encrypted_voice_data_len_buf.unwrap();
+
         let mut out_buf: Vec<u8> = Vec::new();
         out_buf.push(packet_id);
-        out_buf.append(&mut voice_data_len_buf);
-        out_buf.append(&mut voice_data);
+        out_buf.append(&mut encrypted_voice_data_len_buf);
+        out_buf.append(&mut encrypted_message);
 
         match self.send(self.udp_socket_copy.as_ref().unwrap(), &out_buf) {
             Err(msg) => {
@@ -200,8 +212,8 @@ impl UserUdpService {
                 // (u8) - id (ServerMessageUdp::VoiceMessage)
                 // (u8) - username len
                 // (size) - username
-                // (u16) - voice data len
-                // (size) - voice data
+                // (u16) - voice data (encrypted) len
+                // (size) - voice data (encrypted)
 
                 let username_len = buf[1];
                 let mut _read_i = 2usize;
@@ -217,12 +229,13 @@ impl UserUdpService {
                 }
                 let username = username.unwrap();
 
-                // Read voice data len.
-                let voice_data_len_buf = &buf[_read_i.._read_i + std::mem::size_of::<u16>()];
+                // Read voice data (encrypted) len.
+                let encrypted_voice_data_len_buf =
+                    &buf[_read_i.._read_i + std::mem::size_of::<u16>()];
                 _read_i += std::mem::size_of::<u16>();
 
-                let voice_data_len = u16::decode::<u16>(&voice_data_len_buf);
-                if let Err(e) = voice_data_len {
+                let encrypted_voice_data_len = u16::decode::<u16>(&encrypted_voice_data_len_buf);
+                if let Err(e) = encrypted_voice_data_len {
                     return Err(format!(
                         "u16::decode::<u16>() failed, error: {}, at [{}, {}]",
                         e,
@@ -230,13 +243,32 @@ impl UserUdpService {
                         line!()
                     ));
                 }
-                let voice_data_len = voice_data_len.unwrap();
+                let encrypted_voice_data_len = encrypted_voice_data_len.unwrap();
 
-                // Read voice data.
-                let voice_data = &buf[_read_i.._read_i + voice_data_len as usize];
+                // Read voice data (encrypted)
+                let encrypted_voice_data =
+                    &buf[_read_i.._read_i + encrypted_voice_data_len as usize];
+
+                // Decrypt voice data.
+                type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+                let cipher =
+                    Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+                let decrypted_message = cipher.decrypt_vec(encrypted_voice_data);
+                if let Err(e) = decrypted_message {
+                    return Err(format!(
+                        "cipher.decrypt_vec() failed, error: {}, at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    ));
+                }
+                let user_voice_message = decrypted_message.unwrap();
+
                 let mut voice_data_vec: Vec<i16> = Vec::new();
-                for i in (0..voice_data.len()).step_by(std::mem::size_of::<i16>()) {
-                    let val_u = u16::decode::<u16>(&voice_data[i..i + std::mem::size_of::<i16>()]);
+
+                for i in (0..user_voice_message.len()).step_by(std::mem::size_of::<i16>()) {
+                    let val_u =
+                        u16::decode::<u16>(&user_voice_message[i..i + std::mem::size_of::<i16>()]);
                     if let Err(e) = val_u {
                         return Err(format!(
                             "u16::decode::<u16>() failed, error: {}, at [{}, {}]",
