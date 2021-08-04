@@ -2,7 +2,7 @@ pub const CLIENT_CONFIG_FILE_NAME: &str = "silent.config";
 pub const CONFIG_FILE_MAGIC_NUMBER: u16 = 51338;
 pub const CONFIG_FILE_VERSION: u64 = 0;
 
-pub const UI_SCALING_MIN: i32 = 90;
+pub const UI_SCALING_MIN: i32 = 60;
 pub const UI_SCALING_MAX: i32 = 110;
 
 pub const VOLUME_MIN: i32 = 0;
