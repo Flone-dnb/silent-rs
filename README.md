@@ -3,14 +3,13 @@
 Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server-rs) application.
 # Build
 <h3> 1. Install dependencies </h3>
-<h4> Linux (Ubuntu/Debian) </h4>
+<h4> Linux (Debian based) </h4>
 <pre>
-sudo apt install cmake
-sudo apt install libopenal-dev
-sudo apt install libfontconfig1-dev
-sudo apt install libasound2-dev
-sudo apt install libsfml-dev
-sudo apt install libcsfml-dev
+sudo apt install cmake libopenal-dev libfontconfig1-dev libasound2-dev libsfml-dev libcsfml-dev
+</pre>
+<h4> Linux (Arch based) </h4>
+<pre>
+sudo pacman -S cmake csfml sfml openal
 </pre>
 <h4> Other </h4>
 Install OpenAL (for Windows: https://www.openal.org/downloads/ (choose windows installer)) and rust-sfml from https://github.com/jeremyletang/rust-sfml/wiki
