@@ -12,7 +12,7 @@ use num_traits::FromPrimitive;
 // Std.
 use std::io::ErrorKind;
 use std::net::*;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -208,7 +208,11 @@ impl UserUdpService {
                 event_sink
                     .submit_command(
                         USER_UDP_SERVICE_UPDATE_USER_PING,
-                        UserPingInfo { username, ping_ms, try_again_count: USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT },
+                        UserPingInfo {
+                            username,
+                            ping_ms,
+                            try_again_count: USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT,
+                        },
                         Target::Auto,
                     )
                     .expect("failed to submit USER_UDP_SERVICE_UPDATE_USER_PING command");
@@ -293,7 +297,11 @@ impl UserUdpService {
                     voice_data_vec.push(_val);
                 }
 
-                audio_service.lock().unwrap().add_user_voice_chunk(username, voice_data_vec, event_sink);
+                audio_service.lock().unwrap().add_user_voice_chunk(
+                    username,
+                    voice_data_vec,
+                    event_sink,
+                );
             }
             None => {
                 return Err(format!(

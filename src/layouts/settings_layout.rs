@@ -1,8 +1,8 @@
 // External.
 use druid::widget::prelude::*;
 use druid::widget::{
-    Button, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding,
-    SizedBox, Slider, ViewSwitcher,
+    Button, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment,
+    Padding, SizedBox, Slider, ViewSwitcher,
 };
 use druid::{Color, Data, Lens, LensExt, Selector, Target, WidgetExt};
 use rdev::{listen, EventType};
@@ -31,6 +31,7 @@ pub enum ActiveOption {
 #[derive(Clone, Data, Lens)]
 pub struct SettingsLayout {
     pub active_option: ActiveOption,
+    pub show_message_notification: bool,
     pub master_volume: f64,
     pub push_to_talk_key_text: String,
     #[data(ignore)]
@@ -44,6 +45,7 @@ impl SettingsLayout {
             master_volume: 100.0,
             push_to_talk_key_text: "T".to_string(),
             push_to_talk_keycode: KeyCode::KT,
+            show_message_notification: true,
         }
     }
     pub fn build_ui() -> impl Widget<ApplicationState> {
@@ -179,6 +181,23 @@ impl SettingsLayout {
             data.current_layout = Layout::Connect;
         }
     }
+    fn on_show_message_notification_clicked(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env){
+        data.settings_layout.show_message_notification = !data.settings_layout.show_message_notification;
+
+        // Save to config.
+        let mut config_guard = data.user_config.lock().unwrap();
+        config_guard.show_message_notification = data.settings_layout.show_message_notification;
+
+        if let Err(err) = config_guard.save() {
+            let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
+            if !data.is_connected {
+                data.connect_layout
+                    .set_connect_result(ConnectResult::Err(error_msg));
+            } else {
+                data.main_layout.add_system_message(error_msg);
+            }
+        }
+    }
     fn on_push_to_talk_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
         data.settings_layout.push_to_talk_key_text = "Press any key...".to_string();
 
@@ -263,6 +282,24 @@ impl SettingsLayout {
                                 .with_text_size(TEXT_SIZE),
                             )
                             .on_click(SettingsLayout::on_push_to_talk_clicked),
+                        ),
+                )
+                .with_default_spacer()
+                .with_child(
+                    Flex::row()
+                        .with_child(Label::new("Show message notifications: ").with_text_size(TEXT_SIZE))
+                        .with_child(
+                            Button::from_label(
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    if data.settings_layout.show_message_notification{
+                                        String::from("show")
+                                    }else{
+                                        String::from("don't show")
+                                    }
+                                })
+                                .with_text_size(TEXT_SIZE),
+                            )
+                            .on_click(SettingsLayout::on_show_message_notification_clicked),
                         ),
                 ),
         )

@@ -133,6 +133,7 @@ fn init_app(data: &mut ApplicationState) {
     data.settings_layout.master_volume = config_guard.master_volume as f64;
     data.settings_layout.push_to_talk_key_text = get_key_name(config_guard.push_to_talk_button);
     data.settings_layout.push_to_talk_keycode = config_guard.push_to_talk_button;
+    data.settings_layout.show_message_notification = config_guard.show_message_notification;
 
     data.audio_service.lock().unwrap().init(
         Arc::clone(&data.network_service),
@@ -194,7 +195,10 @@ impl AppDelegate<ApplicationState> for Delegate {
                                     USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT
                                 ));
                 } else {
-                    data.network_service.lock().unwrap().resend_ping_later(ping_data.clone());
+                    data.network_service
+                        .lock()
+                        .unwrap()
+                        .resend_ping_later(ping_data.clone());
                 }
             }
             Handled::Yes
@@ -260,6 +264,7 @@ impl AppDelegate<ApplicationState> for Delegate {
             data.main_layout.add_message(
                 user_message_info.message.clone(),
                 user_message_info.username.clone(),
+                data.user_config.lock().unwrap().show_message_notification,
             );
             Handled::Yes
         } else if let Some(user_message_info) = cmd.get(USER_TCP_SERVICE_MOVE_USER_TO_ROOM) {
@@ -290,10 +295,7 @@ fn apply_theme(env: &mut Env, data: &ApplicationState) {
         druid::theme::TEXTBOX_BORDER_RADIUS,
         data.theme.border_radius,
     );
-    env.set(
-        druid::theme::BUTTON_BORDER_RADIUS,
-        data.theme.border_radius,
-    );
+    env.set(druid::theme::BUTTON_BORDER_RADIUS, data.theme.border_radius);
     env.set(
         druid::theme::PLACEHOLDER_COLOR,
         data.theme.placeholder_color.clone(),

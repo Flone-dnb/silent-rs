@@ -1,6 +1,6 @@
 use druid::widget::prelude::*;
 use druid::widget::{Button, CrossAxisAlignment, Flex, Label, LineBreaking, Slider};
-use druid::{Data, Lens, LensExt, Color, WidgetExt};
+use druid::{Color, Data, Lens, LensExt, WidgetExt};
 
 use chrono::prelude::*;
 

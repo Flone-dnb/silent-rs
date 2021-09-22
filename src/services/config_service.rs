@@ -22,6 +22,7 @@ pub struct UserConfig {
     pub ui_scaling: u16,
     pub master_volume: u16,
     pub push_to_talk_button: KeyCode,
+    pub show_message_notification: bool,
 }
 
 impl UserConfig {
@@ -216,7 +217,23 @@ impl UserConfig {
             ));
         }
 
+        let mut buf = vec![0u8; std::mem::size_of::<bool>()];
+        if self.show_message_notification {
+            buf[0] = 1;
+        }
+        if let Err(e) = config_file.write(&mut buf) {
+            return Err(format!(
+                "File::read() failed, error: can't write bool (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            ));
+        }
+
         // new settings go here...
+        //
+        // also update CONFIG_FILE_VERSION if new options are added
+        //
 
         // Finished.
         drop(config_file);
@@ -257,6 +274,7 @@ impl UserConfig {
             ui_scaling: 100,
             master_volume: 100,
             push_to_talk_button: KeyCode::KT,
+            show_message_notification: true,
         }
     }
 
@@ -449,8 +467,29 @@ impl UserConfig {
             }
             user_config.master_volume = master_volume.unwrap();
 
+            if config_version == 0 {
+                return Ok(user_config);
+            }
+
+            let mut buf = vec![0u8; std::mem::size_of::<bool>()];
+            if let Err(e) = config_file.read(&mut buf) {
+                return Err(format!(
+                    "File::read() failed, error: can't read bool (error: {}) at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                ));
+            }
+            if buf[0] == 1 {
+                user_config.show_message_notification = true;
+            } else {
+                user_config.show_message_notification = false;
+            }
+
             //
             // please use 'config_version' variable to handle old config versions...
+            //
+            // also update CONFIG_FILE_VERSION if new options are added
             //
 
             Ok(user_config)

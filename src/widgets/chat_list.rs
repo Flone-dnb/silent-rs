@@ -84,7 +84,7 @@ impl ChatList {
 
         self.refresh_ui = !self.refresh_ui;
     }
-    pub fn add_message(&mut self, message: String, author: String) {
+    pub fn add_message(&mut self, message: &str, author: &str) {
         let mut messages_guard = self.messages.lock().unwrap();
 
         let mut add_message = true;
@@ -98,7 +98,11 @@ impl ChatList {
         }
 
         if add_message {
-            messages_guard.push_back(ChatMessage::new(message, author, MessageType::UserMessage));
+            messages_guard.push_back(ChatMessage::new(
+                message.to_string(),
+                author.to_string(),
+                MessageType::UserMessage,
+            ));
 
             if messages_guard.len() > self.max_messages {
                 messages_guard.pop_front();

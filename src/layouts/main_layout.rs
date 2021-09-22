@@ -248,8 +248,28 @@ impl MainLayout {
             }
         }
     }
-    pub fn add_message(&mut self, message: String, author: String) {
-        self.chat_list.add_message(message, author);
+    pub fn add_message(&mut self, message: String, author: String, show_notification: bool) {
+        self.chat_list.add_message(&message, &author);
+
+        if (author != self.current_user_name) && show_notification {
+            use notify_rust::Notification;
+            #[cfg(target_os = "linux")]
+            let icon_path = &format!(
+                "{}/res/app_icon.png",
+                std::env::current_dir().unwrap().to_str().unwrap()
+            );
+            #[cfg(target_os = "windows")]
+            let icon_path = &format!(
+                "{}\\res\\app_icon.png",
+                std::env::current_dir().unwrap().to_str().unwrap()
+            );
+            Notification::new()
+                .summary(&author)
+                .body(&message)
+                .icon(icon_path)
+                .show()
+                .unwrap();
+        }
     }
     pub fn add_system_message(&mut self, message: String) {
         self.chat_list.add_system_message(message);

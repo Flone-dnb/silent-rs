@@ -78,16 +78,23 @@ impl NetService {
         self.audio_service = Some(audio_service);
     }
 
-    pub fn resend_ping_later(&self, ping_data: UserPingInfo){
+    pub fn resend_ping_later(&self, ping_data: UserPingInfo) {
         let event_sink_clone = self.event_sink.clone().unwrap();
-        thread::spawn(move||{
-            thread::sleep(Duration::from_millis(USER_CONNECT_FIRST_UDP_PING_RETRY_INTERVAL_MS as u64));
-            event_sink_clone.submit_command(
-                USER_UDP_SERVICE_UPDATE_USER_PING,
-                UserPingInfo { username: ping_data.username, ping_ms: ping_data.ping_ms, try_again_count: ping_data.try_again_count - 1 },
-                Target::Auto,
-            )
-            .expect("failed to submit USER_UDP_SERVICE_UPDATE_USER_PING command");
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(
+                USER_CONNECT_FIRST_UDP_PING_RETRY_INTERVAL_MS as u64,
+            ));
+            event_sink_clone
+                .submit_command(
+                    USER_UDP_SERVICE_UPDATE_USER_PING,
+                    UserPingInfo {
+                        username: ping_data.username,
+                        ping_ms: ping_data.ping_ms,
+                        try_again_count: ping_data.try_again_count - 1,
+                    },
+                    Target::Auto,
+                )
+                .expect("failed to submit USER_UDP_SERVICE_UPDATE_USER_PING command");
         });
     }
 
@@ -575,8 +582,10 @@ impl NetService {
         // Ready.
         {
             let audio_service_guard = audio_service.lock().unwrap();
-            audio_service_guard
-                .start_waiting_for_voice(push_to_talk_key, Arc::clone(audio_service_guard.net_service.as_ref().unwrap()));
+            audio_service_guard.start_waiting_for_voice(
+                push_to_talk_key,
+                Arc::clone(audio_service_guard.net_service.as_ref().unwrap()),
+            );
         }
 
         loop {
