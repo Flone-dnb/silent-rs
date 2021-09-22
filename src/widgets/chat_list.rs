@@ -1,85 +1,95 @@
 // External.
 use chrono::prelude::*;
-use iced::{
-    scrollable, Color, Column, Container, HorizontalAlignment, Length, Row, Scrollable, Text,
-    VerticalAlignment,
-};
-use rusty_audio::Audio;
+use druid::widget::prelude::*;
+use druid::widget::{CrossAxisAlignment, Flex, Label, LineBreaking, Padding, Scroll, ViewSwitcher};
+use druid::{Color, Data, Lens};
+use sfml::audio::{Sound, SoundBuffer, SoundStatus};
 
 // Std.
 use std::collections::LinkedList;
+use std::rc::Rc;
+use std::sync::Mutex;
 use std::thread;
+use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
-use crate::themes::*;
-use crate::MainMessage;
+use crate::ApplicationState;
 
-#[derive(Debug)]
+#[derive(Clone, Data, Lens)]
 pub struct ChatList {
-    pub messages: LinkedList<ChatMessage>, // use list instead of vec because we will pop front to maintain 'max_messages' size
+    pub refresh_ui: bool, // because interior mutability (on messages) doesn't work in druid's data
+    pub messages: Rc<Mutex<LinkedList<ChatMessage>>>,
     max_messages: usize,
-
-    scroll_state: scrollable::State,
-}
-
-impl Default for ChatList {
-    fn default() -> Self {
-        ChatList::new()
-    }
 }
 
 impl ChatList {
     pub fn new() -> Self {
         ChatList {
-            messages: LinkedList::default(),
+            messages: Rc::new(Mutex::new(LinkedList::new())),
             max_messages: MAX_MESSAGES_ON_SCREEN,
-            scroll_state: scrollable::State::default(),
+            refresh_ui: false,
         }
     }
-    pub fn get_ui(&mut self, current_style: &StyleTheme) -> Container<MainMessage> {
-        let scroll_area = self.messages.iter().fold(
-            Scrollable::new(&mut self.scroll_state)
-                .width(Length::Fill)
-                .style(current_style.theme),
-            |scroll_area, message| scroll_area.push(message.get_ui(&current_style)),
-        );
+    pub fn build_ui() -> impl Widget<ApplicationState> {
+        ViewSwitcher::new(
+            |data: &ApplicationState, _env| data.main_layout.chat_list.refresh_ui,
+            |selector, data, _env| match selector {
+                _ => Box::new(ChatList::get_list_ui(data)),
+            },
+        )
+    }
+    fn get_list_ui(data: &ApplicationState) -> impl Widget<ApplicationState> {
+        let mut content: Flex<ApplicationState> =
+            Flex::column().cross_axis_alignment(CrossAxisAlignment::Start);
 
-        Container::new(scroll_area)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .padding(10)
-            .style(current_style.theme)
+        let messages_guard = data.main_layout.chat_list.messages.lock().unwrap();
+        for message in messages_guard.iter() {
+            content.add_child(message.get_ui())
+        }
+
+        Scroll::new(content).vertical()
     }
     pub fn clear_text_chat(&mut self) {
-        self.messages.clear();
+        self.messages.lock().unwrap().clear();
+        self.refresh_ui = !self.refresh_ui;
     }
     pub fn add_info_message(&mut self, message: String) {
-        self.messages.push_back(ChatMessage::new(
+        let mut messages_guard = self.messages.lock().unwrap();
+
+        messages_guard.push_back(ChatMessage::new(
             message,
             String::from(""),
             MessageType::InfoMessage,
         ));
 
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
+        if messages_guard.len() > self.max_messages {
+            messages_guard.pop_front();
         }
+
+        self.refresh_ui = !self.refresh_ui;
     }
     pub fn add_system_message(&mut self, message: String) {
-        self.messages.push_back(ChatMessage::new(
+        let mut messages_guard = self.messages.lock().unwrap();
+
+        messages_guard.push_back(ChatMessage::new(
             message,
             String::from(""),
             MessageType::SystemMessage,
         ));
 
-        if self.messages.len() > self.max_messages {
-            self.messages.pop_front();
+        if messages_guard.len() > self.max_messages {
+            messages_guard.pop_front();
         }
+
+        self.refresh_ui = !self.refresh_ui;
     }
     pub fn add_message(&mut self, message: String, author: String) {
+        let mut messages_guard = self.messages.lock().unwrap();
+
         let mut add_message = true;
 
-        if let Some(last_message) = self.messages.back_mut() {
+        if let Some(last_message) = messages_guard.back_mut() {
             if last_message.author == author && last_message.time == ChatMessage::current_time() {
                 last_message.message.push('\n');
                 last_message.message.push_str(&message);
@@ -88,31 +98,34 @@ impl ChatList {
         }
 
         if add_message {
-            self.messages
-                .push_back(ChatMessage::new(message, author, MessageType::UserMessage));
+            messages_guard.push_back(ChatMessage::new(message, author, MessageType::UserMessage));
 
-            if self.messages.len() > self.max_messages {
-                self.messages.pop_front();
+            if messages_guard.len() > self.max_messages {
+                messages_guard.pop_front();
             }
         }
 
+        self.refresh_ui = !self.refresh_ui;
+
         thread::spawn(move || {
-            let mut audio = Audio::new();
-            audio.add("sound", NEW_MESSAGE_SOUND_PATH);
-            audio.play("sound"); // Execution continues while playback occurs in another thread.
-            audio.wait(); // Block until sounds finish playing
+            let buffer = SoundBuffer::from_file(NEW_MESSAGE_SOUND_PATH).unwrap();
+            let mut sound = Sound::with_buffer(&buffer);
+            sound.play();
+            while sound.status() == SoundStatus::PLAYING {
+                std::thread::sleep(Duration::from_secs(1));
+            }
         });
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Data, PartialEq)]
 pub enum MessageType {
     UserMessage,
     SystemMessage,
     InfoMessage,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Data)]
 pub struct ChatMessage {
     message: String,
     author: String,
@@ -156,7 +169,7 @@ impl ChatMessage {
             message_type,
         }
     }
-    pub fn get_ui(&self, current_style: &StyleTheme) -> Column<MainMessage> {
+    pub fn get_ui(&self) -> impl Widget<ApplicationState> {
         let mut _author: &str = &self.author;
 
         match self.message_type {
@@ -165,58 +178,49 @@ impl ChatMessage {
             MessageType::InfoMessage => _author = "INFO",
         }
 
-        let mut content = Column::new().padding(10).push(
-            Row::new()
-                .push(
-                    Text::new(_author)
-                        .color(current_style.get_message_author_color())
-                        .size(23)
-                        .horizontal_alignment(HorizontalAlignment::Left)
-                        .vertical_alignment(VerticalAlignment::Top)
-                        .width(Length::Shrink),
+        let mut message_column: Flex<ApplicationState> =
+            Flex::column().cross_axis_alignment(CrossAxisAlignment::Start);
+
+        message_column.add_child(
+            Flex::row()
+                .with_child(
+                    Label::new(_author)
+                        .with_text_size(MESSAGE_AUTHOR_TEXT_SIZE)
+                        .with_text_color(druid::theme::BUTTON_DARK),
                 )
-                .push(
-                    Text::new(String::from("  ") + &self.time)
-                        .color(Color::from_rgb(
-                            128_f32 / 255.0,
-                            128_f32 / 255.0,
-                            128_f32 / 255.0,
-                        ))
-                        .size(17)
-                        .horizontal_alignment(HorizontalAlignment::Left)
-                        .vertical_alignment(VerticalAlignment::Bottom)
-                        .width(Length::Shrink),
+                .with_child(
+                    Label::new(format!("  {}", self.time.clone()))
+                        .with_text_size(MESSAGE_TEXT_SIZE)
+                        .with_text_color(Color::GRAY),
                 ),
         );
 
         match self.message_type {
             MessageType::UserMessage => {
-                content = content.push(Text::new(&self.message).color(Color::WHITE).size(22));
+                message_column.add_child(
+                    Label::new(self.message.clone())
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .with_text_size(MESSAGE_TEXT_SIZE),
+                );
             }
             MessageType::SystemMessage => {
-                content = content.push(
-                    Text::new(&self.message)
-                        .color(Color::from_rgb(
-                            170_f32 / 255.0,
-                            30_f32 / 255.0,
-                            30_f32 / 255.0,
-                        ))
-                        .size(22),
+                message_column.add_child(
+                    Label::new(self.message.clone())
+                        .with_text_size(MESSAGE_TEXT_SIZE)
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .with_text_color(Color::RED),
                 );
             }
             MessageType::InfoMessage => {
-                content = content.push(
-                    Text::new(&self.message)
-                        .color(Color::from_rgb(
-                            128_f32 / 255.0,
-                            128_f32 / 255.0,
-                            128_f32 / 255.0,
-                        ))
-                        .size(22),
+                message_column.add_child(
+                    Label::new(self.message.clone())
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .with_text_size(MESSAGE_TEXT_SIZE)
+                        .with_text_color(Color::GRAY),
                 );
             }
         }
 
-        content
+        Padding::new(5.0, message_column)
     }
 }

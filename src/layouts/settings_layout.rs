@@ -1,258 +1,401 @@
 // External.
-use iced::{
-    button, slider, Button, Color, Column, Container, Element, HorizontalAlignment, Length, Row,
-    Slider, Text,
+use druid::widget::prelude::*;
+use druid::widget::{
+    Button, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding,
+    SizedBox, Slider, ViewSwitcher,
 };
+use druid::{Color, Data, Lens, LensExt, Selector, Target, WidgetExt};
+use rdev::{listen, EventType};
 use system_wide_key_state::*;
 
 // Std.
-use std::ops::RangeInclusive;
+use std::thread;
 
 // Custom.
-use crate::global_params::*;
-use crate::themes::*;
-use crate::MainMessage;
+use crate::misc::custom_slider_controller::*;
+use crate::services::user_tcp_service::ConnectResult;
+use crate::theme::*;
+use crate::ApplicationState;
+use crate::CustomSliderID;
+use crate::{global_params::*, Layout};
 
-#[derive(Debug, Clone)]
-pub enum SettingsLayoutMessage {
-    GeneralSettingsButtonPressed,
-    AboutSettingsButtonPressed,
-    GithubButtonPressed,
-    FromSettingsButtonPressed,
-    PushToTalkChangeButtonPressed,
-}
+pub const PUSH_TO_TALK_KEY_CHANGE_EVENT: Selector<String> =
+    Selector::new("settings_push_to_talk_key_change_event");
 
-pub struct SettingsLayout {
-    active_option: CurrentActiveOption,
-
-    about_details: AboutDetails,
-
-    pub ui_scaling_slider_value: i32,
-    pub master_output_volume_slider_value: i32,
-    pub push_to_talk_key: KeyCode,
-    pub ask_for_push_to_talk_button: bool,
-    pub push_to_talk_button_hint: &'static str,
-    pub master_volume_slider_hint: &'static str,
-
-    back_button: button::State,
-    general_button: button::State,
-    about_button: button::State,
-    push_to_talk_button: button::State,
-    ui_scaling_slider_state: slider::State,
-    master_output_volume_slider_state: slider::State,
-}
-
-impl Default for SettingsLayout {
-    fn default() -> Self {
-        SettingsLayout {
-            ui_scaling_slider_value: 100,
-            master_output_volume_slider_value: 100,
-            active_option: CurrentActiveOption::General,
-            about_details: AboutDetails::default(),
-            ui_scaling_slider_state: slider::State::default(),
-            master_output_volume_slider_state: slider::State::default(),
-            back_button: button::State::default(),
-            general_button: button::State::default(),
-            about_button: button::State::default(),
-            push_to_talk_button: button::State::default(),
-            push_to_talk_key: KeyCode::KT,
-            ask_for_push_to_talk_button: false,
-            push_to_talk_button_hint: "",
-            master_volume_slider_hint: "",
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct AboutDetails {
-    github_button: button::State,
-}
-
-#[derive(Debug)]
-pub enum CurrentActiveOption {
+#[derive(Clone, Data, PartialEq)]
+pub enum ActiveOption {
     General,
     About,
 }
 
-impl Default for CurrentActiveOption {
-    fn default() -> Self {
-        CurrentActiveOption::General
-    }
+#[derive(Clone, Data, Lens)]
+pub struct SettingsLayout {
+    pub active_option: ActiveOption,
+    pub master_volume: f64,
+    pub push_to_talk_key_text: String,
+    #[data(ignore)]
+    pub push_to_talk_keycode: KeyCode,
 }
 
 impl SettingsLayout {
-    pub fn set_active_option(&mut self, option: CurrentActiveOption) {
-        self.active_option = option;
+    pub fn new() -> Self {
+        SettingsLayout {
+            active_option: ActiveOption::General,
+            master_volume: 100.0,
+            push_to_talk_key_text: "T".to_string(),
+            push_to_talk_keycode: KeyCode::KT,
+        }
     }
+    pub fn build_ui() -> impl Widget<ApplicationState> {
+        let mut active_option_content = Flex::column()
+            .must_fill_main_axis(true)
+            .main_axis_alignment(MainAxisAlignment::Center)
+            .with_flex_child(SizedBox::empty().expand(), 10.0);
 
-    pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
-        // Create all buttons.
-        let mut general_button = Button::new(
-            &mut self.general_button,
-            Text::new("General").color(Color::WHITE),
-        )
-        .on_press(MainMessage::MessageFromSettingsLayout(
-            SettingsLayoutMessage::GeneralSettingsButtonPressed,
-        ))
-        .width(Length::Fill)
-        .height(Length::FillPortion(8));
-
-        let mut about_button = Button::new(
-            &mut self.about_button,
-            Text::new("About").color(Color::WHITE),
-        )
-        .on_press(MainMessage::MessageFromSettingsLayout(
-            SettingsLayoutMessage::AboutSettingsButtonPressed,
-        ))
-        .width(Length::Fill)
-        .height(Length::FillPortion(8));
-
-        // Create right side content placeholder.
-        let mut right_content_column: Column<MainMessage> = Column::new().padding(10).spacing(10);
-
-        // Set styles for buttons.
-        match self.active_option {
-            CurrentActiveOption::General => {
-                general_button = general_button.style(current_style.theme);
-                about_button = about_button.style(default_theme::GrayButton);
-
-                let mut push_to_talk_text = get_key_name(self.push_to_talk_key);
-                if self.ask_for_push_to_talk_button {
-                    push_to_talk_text = String::from("Press any key...");
-                }
-
-                right_content_column = right_content_column
-                    .push(Text::new("UI Scaling").color(Color::WHITE))
-                    .push(
-                        Row::new()
-                            .push(
-                                Slider::new(
-                                    &mut self.ui_scaling_slider_state,
-                                    RangeInclusive::new(UI_SCALING_MIN, UI_SCALING_MAX),
-                                    self.ui_scaling_slider_value,
-                                    MainMessage::UIScalingSliderMoved,
-                                )
-                                .width(Length::FillPortion(50))
-                                .style(current_style.theme),
-                            )
-                            .push(Column::new().width(Length::FillPortion(2)))
-                            .push(
-                                Text::new(format!("{}%", self.ui_scaling_slider_value))
-                                    .width(Length::FillPortion(20)),
-                            )
-                            .push(Column::new().width(Length::FillPortion(28))),
-                    )
-                    .push(Text::new(" ").color(Color::WHITE))
-                    .push(Text::new("Master Output Volume").color(Color::WHITE))
-                    .push(
-                        Row::new()
-                            .push(
-                                Slider::new(
-                                    &mut self.master_output_volume_slider_state,
-                                    RangeInclusive::new(VOLUME_MIN, VOLUME_MAX),
-                                    self.master_output_volume_slider_value,
-                                    MainMessage::MasterOutputVolumeSliderMoved,
-                                )
-                                .width(Length::FillPortion(50))
-                                .style(current_style.theme),
-                            )
-                            .push(Column::new().width(Length::FillPortion(2)))
-                            .push(
-                                Text::new(format!("{}%", self.master_output_volume_slider_value))
-                                    .width(Length::FillPortion(20)),
-                            )
-                            .push(Column::new().width(Length::FillPortion(28))),
-                    )
-                    .push(
-                        Text::new(self.master_volume_slider_hint)
-                            .size(20)
-                            .color(current_style.get_message_author_color()),
-                    )
-                    .push(Text::new(" ").color(Color::WHITE))
-                    .push(Text::new("Push-to-Talk Button").color(Color::WHITE))
-                    .push(
-                        Row::new()
-                            .push(
-                                Button::new(
-                                    &mut self.push_to_talk_button,
-                                    Text::new(push_to_talk_text)
-                                        .horizontal_alignment(HorizontalAlignment::Center),
-                                )
-                                .width(Length::FillPortion(30))
-                                .on_press(MainMessage::MessageFromSettingsLayout(
-                                    SettingsLayoutMessage::PushToTalkChangeButtonPressed,
-                                ))
-                                .style(current_style.theme),
-                            )
-                            .push(Column::new().width(Length::FillPortion(70))),
-                    )
-                    .push(
-                        Text::new(self.push_to_talk_button_hint)
-                            .size(20)
-                            .color(current_style.get_message_author_color()),
-                    );
-            }
-            CurrentActiveOption::About => {
-                general_button = general_button.style(default_theme::GrayButton);
-                about_button = about_button.style(current_style.theme);
-
-                right_content_column = right_content_column
-                    .push(Text::new("Silent is a cross-platform, high-quality, low latency voice chat made for gaming.")
-                            .color(Color::WHITE).size(25)
-                    )
-                    .push(Text::new(String::from("Version: ") + env!("CARGO_PKG_VERSION") + " (rs).")
-                            .color(Color::WHITE).size(25)
-                    )
-                    .push(Row::new()
-                        .push(Text::new("This is an open source project:  ").color(Color::WHITE).size(25))
-                        .push(Button::new(
-                                &mut self.about_details.github_button,
-                                Text::new("source code").color(Color::WHITE).size(25),
-                            )
-                            .on_press(MainMessage::MessageFromSettingsLayout(SettingsLayoutMessage::GithubButtonPressed))
-                            .style(current_style.theme)
+        let res = ViewSwitcher::new(
+            |data: &ApplicationState, _env| data.settings_layout.active_option.clone(),
+            |selector, _data, _env| match selector {
+                &ActiveOption::General => Box::new(
+                    Flex::column()
+                        .must_fill_main_axis(true)
+                        .main_axis_alignment(MainAxisAlignment::Center)
+                        .with_flex_child(
+                            Container::new(SizedBox::empty().expand())
+                                .background(BACKGROUND_SPECIAL_COLOR)
+                                .expand(),
+                            10.0,
                         )
-                    );
+                        .with_flex_child(SizedBox::empty().expand(), 5.0)
+                        .with_flex_child(Container::new(SizedBox::empty().expand()).expand(), 10.0)
+                        .expand(),
+                ),
+                &ActiveOption::About => Box::new(
+                    Flex::column()
+                        .must_fill_main_axis(true)
+                        .main_axis_alignment(MainAxisAlignment::Center)
+                        .with_flex_child(Container::new(SizedBox::empty().expand()).expand(), 10.0)
+                        .with_flex_child(SizedBox::empty().expand(), 5.0)
+                        .with_flex_child(
+                            Container::new(SizedBox::empty().expand())
+                                .background(BACKGROUND_SPECIAL_COLOR)
+                                .expand(),
+                            10.0,
+                        )
+                        .expand(),
+                ),
+            },
+        );
+
+        active_option_content.add_flex_child(res, 25.0);
+        active_option_content.add_flex_child(SizedBox::empty().expand(), 45.0);
+        // for back button
+        active_option_content.add_flex_child(SizedBox::empty().expand(), 10.0);
+        active_option_content.add_flex_child(SizedBox::empty().expand(), 10.0);
+
+        Flex::row()
+            .with_flex_child(SizedBox::empty().expand(), 5.0)
+            .with_flex_child(
+                Container::new(
+                    Flex::column()
+                        .must_fill_main_axis(true)
+                        .main_axis_alignment(MainAxisAlignment::Center)
+                        .with_flex_child(SizedBox::empty().expand(), 10.0)
+                        .with_flex_child(
+                            Button::from_label(Label::new("General").with_text_size(TEXT_SIZE))
+                                .on_click(SettingsLayout::on_general_button_clicked)
+                                .expand(),
+                            10.0,
+                        )
+                        .with_flex_child(SizedBox::empty().expand(), 5.0)
+                        .with_flex_child(
+                            Button::from_label(Label::new("About").with_text_size(TEXT_SIZE))
+                                .on_click(SettingsLayout::on_about_button_clicked)
+                                .expand(),
+                            10.0,
+                        )
+                        .with_flex_child(SizedBox::empty().expand(), 45.0)
+                        .with_flex_child(
+                            Button::from_label(Label::new("Back").with_text_size(TEXT_SIZE))
+                                .on_click(SettingsLayout::on_back_button_clicked)
+                                .expand(),
+                            10.0,
+                        )
+                        .with_flex_child(SizedBox::empty().expand(), 10.0),
+                )
+                .background(BACKGROUND_SPECIAL_COLOR)
+                .expand(),
+                20.0,
+            )
+            .with_flex_child(active_option_content, 5.0)
+            .with_flex_child(
+                Flex::column()
+                    .must_fill_main_axis(true)
+                    .main_axis_alignment(MainAxisAlignment::Center)
+                    .with_flex_child(SizedBox::empty().expand(), 5.0)
+                    .with_flex_child(
+                        Container::new(ViewSwitcher::new(
+                            |data: &ApplicationState, _env| {
+                                data.settings_layout.active_option.clone()
+                            },
+                            |selector, _data, _env| match selector {
+                                &ActiveOption::General => {
+                                    Box::new(SettingsLayout::get_general_content())
+                                }
+                                &ActiveOption::About => {
+                                    Box::new(SettingsLayout::get_about_content())
+                                }
+                            },
+                        ))
+                        .background(BACKGROUND_SPECIAL_COLOR)
+                        .rounded(druid::theme::BUTTON_BORDER_RADIUS)
+                        .expand(),
+                        90.0,
+                    )
+                    .with_flex_child(SizedBox::empty().expand(), 5.0),
+                65.0,
+            )
+            .with_flex_child(SizedBox::empty().expand(), 5.0)
+    }
+    fn on_general_button_clicked(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        data.settings_layout.active_option = ActiveOption::General;
+    }
+    fn on_about_button_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        // finish changing push-to-talk button if it was pressed
+        ctx.get_external_handle()
+            .submit_command(PUSH_TO_TALK_KEY_CHANGE_EVENT, String::new(), Target::Auto)
+            .expect("failed to submit PUSH_TO_TALK_KEY_CHANGE_EVENT command");
+
+        data.settings_layout.active_option = ActiveOption::About;
+    }
+    fn on_back_button_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        // finish changing push-to-talk button if it was pressed
+        ctx.get_external_handle()
+            .submit_command(PUSH_TO_TALK_KEY_CHANGE_EVENT, String::new(), Target::Auto)
+            .expect("failed to submit PUSH_TO_TALK_KEY_CHANGE_EVENT command");
+
+        if data.is_connected {
+            data.current_layout = Layout::Main;
+        } else {
+            data.current_layout = Layout::Connect;
+        }
+    }
+    fn on_push_to_talk_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        data.settings_layout.push_to_talk_key_text = "Press any key...".to_string();
+
+        let event_sink = ctx.get_external_handle();
+        thread::spawn(move || {
+            // Listen to keyboard/mouse.
+            // this will block forever (this is why we need a restart)
+            if let Err(error) = listen(move |event| {
+                if let EventType::KeyPress(key) = event.event_type {
+                    // convert key to our enum
+                    let mut _key_name: String = String::new();
+                    loop {
+                        if let Some(keycode) = convert_rdev_key(key) {
+                            _key_name = get_key_name(keycode);
+                            break;
+                        }
+                    }
+
+                    if _key_name == get_key_name(KeyCode::KEsc) {
+                        _key_name = String::new(); // don't update, but hide "Press any key" text
+                    }
+
+                    event_sink
+                        .submit_command(PUSH_TO_TALK_KEY_CHANGE_EVENT, _key_name, Target::Auto)
+                        .expect("failed to submit PUSH_TO_TALK_KEY_CHANGE_EVENT command");
+                }
+            }) {
+                println!("rdev listen error: {:?}", error);
+            }
+        });
+    }
+    fn get_general_content() -> impl Widget<ApplicationState> {
+        Padding::new(
+            10.0,
+            Flex::column()
+                .must_fill_main_axis(true)
+                .main_axis_alignment(MainAxisAlignment::Start)
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .with_child(
+                    Label::new("NOTE: A restart is required to apply the changed parameters.")
+                        .with_text_color(Color::RED)
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .with_text_size(TEXT_SIZE),
+                )
+                .with_default_spacer()
+                .with_default_spacer()
+                .with_child(Label::new("Master Output Volume").with_text_size(TEXT_SIZE))
+                .with_child(
+                    Flex::row()
+                        .must_fill_main_axis(true)
+                        .with_flex_child(
+                            Slider::new()
+                                .with_step(1.0)
+                                .with_range(0.0, 100.0)
+                                .expand_width()
+                                .controller(CustomSliderController::new(
+                                    CustomSliderID::MasterVolumeSlider,
+                                ))
+                                .lens(
+                                    ApplicationState::settings_layout
+                                        .then(SettingsLayout::master_volume),
+                                ),
+                            80.0,
+                        )
+                        .with_flex_child(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!("{:.3} %", data.settings_layout.master_volume.to_string())
+                            })
+                            .with_text_size(TEXT_SIZE),
+                            20.0,
+                        ),
+                )
+                .with_default_spacer()
+                .with_child(
+                    Flex::row()
+                        .with_child(Label::new("Push-to-Talk Button:  ").with_text_size(TEXT_SIZE))
+                        .with_child(
+                            Button::from_label(
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    data.settings_layout.push_to_talk_key_text.clone()
+                                })
+                                .with_text_size(TEXT_SIZE),
+                            )
+                            .on_click(SettingsLayout::on_push_to_talk_clicked),
+                        ),
+                ),
+        )
+    }
+    fn get_about_content() -> impl Widget<ApplicationState> {
+        Padding::new(
+            10.0,
+            Flex::column()
+                .must_fill_main_axis(true)
+                .main_axis_alignment(MainAxisAlignment::Start)
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .with_child(
+                    Label::new("Silent is a cross-platform open-source voice chat.\n")
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .with_text_size(TEXT_SIZE),
+                )
+                .with_child(
+                    Label::new(String::from("Version: ") + env!("CARGO_PKG_VERSION") + " (rs).")
+                        .with_line_break_mode(LineBreaking::WordWrap)
+                        .with_text_size(TEXT_SIZE),
+                )
+                .with_child(
+                    Flex::row()
+                        .with_child(
+                            Label::new("The source code is available ")
+                                .with_line_break_mode(LineBreaking::WordWrap)
+                                .with_text_size(TEXT_SIZE),
+                        )
+                        .with_child(
+                            Button::from_label(Label::new("here").with_text_size(TEXT_SIZE))
+                                .on_click(|_ctx, _data, _env| {
+                                    opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
+                                }),
+                        ),
+                )
+                .with_child(
+                    Label::new(
+                        "\nThe UI is powered by the Druid (data-oriented Rust UI design toolkit).",
+                    )
+                    .with_line_break_mode(LineBreaking::WordWrap)
+                    .with_text_size(TEXT_SIZE),
+                ),
+        )
+    }
+    pub fn push_to_talk_key_change_event(data: &mut ApplicationState, key: &String) {
+        if key == "" {
+            data.settings_layout.push_to_talk_key_text =
+                get_key_name(data.settings_layout.push_to_talk_keycode);
+        } else {
+            data.settings_layout.push_to_talk_key_text = key.to_string();
+            data.settings_layout.push_to_talk_keycode = string_to_key(key);
+
+            // Save to config.
+            let mut config_guard = data.user_config.lock().unwrap();
+            config_guard.push_to_talk_button = string_to_key(key);
+
+            if let Err(err) = config_guard.save() {
+                let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
+                if !data.is_connected {
+                    data.connect_layout
+                        .set_connect_result(ConnectResult::Err(error_msg));
+                } else {
+                    data.main_layout.add_system_message(error_msg);
+                }
             }
         }
+    }
+    pub fn master_volume_slider_moved_event(
+        data: &mut ApplicationState,
+        info: &OnCustomSliderMovedInfo,
+    ) {
+        // Save to config.
+        let mut config_guard = data.user_config.lock().unwrap();
+        config_guard.master_volume = info.value;
 
-        let content = Row::new()
-            .padding(5)
-            .spacing(15)
-            .push(
-                Container::new(
-                    Column::new()
-                        .padding(10)
-                        .push(Column::new().height(Length::FillPortion(10)))
-                        .push(general_button.height(Length::Shrink))
-                        .push(Column::new().height(Length::FillPortion(5)))
-                        .push(about_button.height(Length::Shrink))
-                        .push(Column::new().height(Length::FillPortion(40)))
-                        .push(
-                            Button::new(
-                                &mut self.back_button,
-                                Text::new("back").color(Color::WHITE),
-                            )
-                            .on_press(MainMessage::MessageFromSettingsLayout(
-                                SettingsLayoutMessage::FromSettingsButtonPressed,
-                            ))
-                            .width(Length::Fill)
-                            .height(Length::Shrink)
-                            .style(current_style.theme),
-                        )
-                        .push(Column::new().height(Length::FillPortion(10))),
-                )
-                .width(Length::FillPortion(13))
-                .height(Length::Fill)
-                .style(current_style.theme),
-            )
-            .push(
-                Container::new(right_content_column)
-                    .width(Length::FillPortion(87))
-                    .height(Length::Fill)
-                    .style(current_style.theme),
-            );
+        if let Err(err) = config_guard.save() {
+            let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
+            if !data.is_connected {
+                data.connect_layout
+                    .set_connect_result(ConnectResult::Err(error_msg));
+            } else {
+                data.main_layout.add_system_message(error_msg);
+            }
+        }
+    }
+}
 
-        Column::new().padding(10).push(content).into()
+fn convert_rdev_key(key: rdev::Key) -> Option<system_wide_key_state::KeyCode> {
+    match key {
+        // only use some of the keys that will most likely be used
+        rdev::Key::Tab => Some(KeyCode::KTab),
+        rdev::Key::ShiftLeft => Some(KeyCode::KShift),
+        rdev::Key::ControlLeft => Some(KeyCode::KCtrl),
+        rdev::Key::Alt => Some(KeyCode::KAlt),
+        rdev::Key::CapsLock => Some(KeyCode::KCapsLock),
+        rdev::Key::Escape => Some(KeyCode::KEsc), // cancels change
+        rdev::Key::Space => Some(KeyCode::KSpace),
+        rdev::Key::Kp0 => Some(KeyCode::K0),
+        rdev::Key::Kp1 => Some(KeyCode::K1),
+        rdev::Key::Kp2 => Some(KeyCode::K2),
+        rdev::Key::Kp3 => Some(KeyCode::K3),
+        rdev::Key::Kp4 => Some(KeyCode::K4),
+        rdev::Key::Kp5 => Some(KeyCode::K5),
+        rdev::Key::Kp6 => Some(KeyCode::K6),
+        rdev::Key::Kp7 => Some(KeyCode::K7),
+        rdev::Key::Kp8 => Some(KeyCode::K8),
+        rdev::Key::Kp9 => Some(KeyCode::K9),
+        rdev::Key::KeyA => Some(KeyCode::KA),
+        rdev::Key::KeyB => Some(KeyCode::KB),
+        rdev::Key::KeyC => Some(KeyCode::KC),
+        rdev::Key::KeyD => Some(KeyCode::KD),
+        rdev::Key::KeyE => Some(KeyCode::KE),
+        rdev::Key::KeyF => Some(KeyCode::KF),
+        rdev::Key::KeyG => Some(KeyCode::KG),
+        rdev::Key::KeyH => Some(KeyCode::KH),
+        rdev::Key::KeyI => Some(KeyCode::KI),
+        rdev::Key::KeyJ => Some(KeyCode::KJ),
+        rdev::Key::KeyK => Some(KeyCode::KK),
+        rdev::Key::KeyL => Some(KeyCode::KL),
+        rdev::Key::KeyM => Some(KeyCode::KM),
+        rdev::Key::KeyN => Some(KeyCode::KN),
+        rdev::Key::KeyO => Some(KeyCode::KO),
+        rdev::Key::KeyP => Some(KeyCode::KP),
+        rdev::Key::KeyQ => Some(KeyCode::KQ),
+        rdev::Key::KeyR => Some(KeyCode::KR),
+        rdev::Key::KeyS => Some(KeyCode::KS),
+        rdev::Key::KeyT => Some(KeyCode::KT),
+        rdev::Key::KeyU => Some(KeyCode::KU),
+        rdev::Key::KeyV => Some(KeyCode::KV),
+        rdev::Key::KeyW => Some(KeyCode::KW),
+        rdev::Key::KeyX => Some(KeyCode::KX),
+        rdev::Key::KeyY => Some(KeyCode::KY),
+        rdev::Key::KeyZ => Some(KeyCode::KZ),
+        _ => None,
     }
 }

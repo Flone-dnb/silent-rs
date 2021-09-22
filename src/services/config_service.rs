@@ -2,13 +2,14 @@
 use bytevec::{ByteDecodable, ByteEncodable};
 use num_traits::cast::FromPrimitive;
 use num_traits::cast::ToPrimitive;
+#[cfg(target_os = "windows")]
 use platform_dirs::UserDirs;
 use system_wide_key_state::*;
 
 // Std.
 use std::io::prelude::*;
 use std::path::Path;
-use std::{fs::File, u16};
+use std::{fs::*, u16};
 
 // Custom.
 use crate::global_params::*;
@@ -459,26 +460,50 @@ impl UserConfig {
     }
 
     fn get_config_file_path() -> Result<String, String> {
-        let user_dirs = UserDirs::new();
-        if user_dirs.is_none() {
-            return Err(format!(
-                "UserDirs::new() failed, error: can't read user dirs at [{}, {}]",
-                file!(),
-                line!(),
-            ));
-        }
-        let user_dirs = user_dirs.unwrap();
-
-        let config_dir = String::from(user_dirs.document_dir.to_str().unwrap());
-
-        let mut _config_file_path = config_dir;
-        if !_config_file_path.ends_with('/') && !_config_file_path.ends_with('\\') {
-            _config_file_path += "/";
+        let mut _config_dir = String::new();
+        #[cfg(target_os = "windows")]
+        {
+            let user_dirs = UserDirs::new();
+            if user_dirs.is_none() {
+                return Err(format!(
+                    "UserDirs::new() failed, error: can't read user dirs at [{}, {}]",
+                    file!(),
+                    line!(),
+                ));
+            }
+            let user_dirs = user_dirs.unwrap();
+            _config_dir = String::from(user_dirs.document_dir.to_str().unwrap());
         }
 
-        _config_file_path += CLIENT_CONFIG_FILE_NAME;
+        #[cfg(target_os = "linux")]
+        {
+            _config_dir = format!(
+                "/home/{}/.config",
+                users::get_current_username().unwrap().to_str().unwrap()
+            );
+            if !Path::new(&_config_dir).exists() {
+                if let Err(e) = create_dir(&_config_dir) {
+                    panic!(
+                        "unable to create a .config directory ({}): {}",
+                        &_config_dir, e
+                    );
+                }
+            }
+        }
 
-        Ok(_config_file_path)
+        #[cfg(target_os = "windows")]
+        if !_config_dir.ends_with("\\") {
+            _config_dir += "\\";
+        }
+
+        #[cfg(target_os = "linux")]
+        if !_config_dir.ends_with("/") {
+            _config_dir += "/";
+        }
+
+        _config_dir += CLIENT_CONFIG_FILE_NAME;
+
+        Ok(_config_dir)
     }
 
     fn read_u16_from_file(file: &mut File) -> Result<u16, String> {

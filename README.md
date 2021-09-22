@@ -15,3 +15,6 @@ sudo pacman -S cmake csfml sfml openal
 Install OpenAL (for Windows: https://www.openal.org/downloads/ (choose windows installer)) and rust-sfml from https://github.com/jeremyletang/rust-sfml/wiki
 <h3> 2. Build </h3>
 Use 'cargo build --release' (requires Rust nightly) to build the app and copy the 'res' folder next to the binary.
+# License
+Please note, that starting from version **2.0.0** this project is licensed under the MIT license.<br>
+All versions prior to version **2.0.0** were licensed under the ZLib license.

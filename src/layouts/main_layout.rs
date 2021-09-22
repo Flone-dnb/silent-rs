@@ -1,107 +1,167 @@
 // External.
-use iced::{
-    button, text_input, Align, Button, Color, Column, Element, HorizontalAlignment, Length, Row,
-    Text, TextInput, VerticalAlignment,
+use druid::widget::prelude::*;
+use druid::widget::{
+    Button, Container, CrossAxisAlignment, Flex, Label, Padding, SizedBox, TextBox,
 };
-use iced_aw::{modal, Card, Modal};
-use rusty_audio::Audio;
+use druid::{Data, Lens, LensExt, WidgetExt};
+use sfml::audio::{Sound, SoundBuffer, SoundStatus};
 
 // Std.
 use std::thread;
+use std::time::Duration;
 
+use crate::misc::custom_data_button_controller::CustomButtonData;
 // Custom.
-use crate::global_params::*;
-use crate::themes::*;
+use crate::misc::custom_text_box_controller::*;
+use crate::misc::formatter_max_characters::*; // add formatter when #1975 is resolved
+use crate::theme::BACKGROUND_SPECIAL_COLOR;
 use crate::widgets::chat_list::*;
-use crate::widgets::users_list::*;
-use crate::MainMessage;
+use crate::widgets::connected_list::*;
+use crate::ApplicationState;
+use crate::{global_params::*, Layout};
 
-#[derive(Default, Debug)]
-struct ModalState {
-    message: String,
-    cancel_state: button::State,
-    ok_state: button::State,
-}
-
-#[derive(Clone, Debug)]
-pub enum ModalMessage {
-    CloseModal,
-    OkButtonPressed,
-}
-
-#[derive(Debug, Clone)]
-pub enum MainLayoutMessage {
-    MessageInputEnterPressed,
-    HideUserInfoPressed,
-    UserItemPressed(String),
-    RoomItemPressed(String),
-}
-
-#[derive(Debug)]
+#[derive(Clone, Data, Lens)]
 pub struct MainLayout {
+    pub message: String,
     pub chat_list: ChatList,
-    pub users_list: UserList,
-
-    pub connected_users: usize,
-
-    pub message_string: String,
+    pub connected_list: ConnectedList,
     pub current_user_room: String,
     pub current_user_name: String,
-
-    modal_state: modal::State<ModalState>,
-    message_input: text_input::State,
-    settings_button: button::State,
-}
-
-impl Default for MainLayout {
-    fn default() -> Self {
-        MainLayout {
-            chat_list: ChatList::default(),
-            users_list: UserList::default(),
-            connected_users: 0,
-            message_string: String::from(""),
-            current_user_name: String::from(""),
-            current_user_room: String::from(DEFAULT_ROOM_NAME),
-            modal_state: modal::State::<ModalState>::default(),
-            message_input: text_input::State::default(),
-            settings_button: button::State::default(),
-        }
-    }
+    pub connected_count_text: usize,
 }
 
 impl MainLayout {
+    pub fn new() -> Self {
+        MainLayout {
+            message: String::new(),
+            connected_list: ConnectedList::new(),
+            chat_list: ChatList::new(),
+            current_user_room: String::new(),
+            current_user_name: String::new(),
+            connected_count_text: 0,
+        }
+    }
+    pub fn build_ui() -> impl Widget<ApplicationState> {
+        Padding::new(
+            10.0,
+            Flex::row()
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .with_flex_child(
+                    Flex::column()
+                        .must_fill_main_axis(true)
+                        .with_flex_child(
+                            Flex::row()
+                                .with_child(
+                                    Button::from_label(
+                                        Label::new("settings").with_text_size(TEXT_SIZE),
+                                    )
+                                    .on_click(MainLayout::on_settings_clicked),
+                                )
+                                .expand(),
+                            10.0,
+                        )
+                        .with_flex_child(Label::new("Text Chat").with_text_size(TEXT_SIZE), 10.0)
+                        .with_default_spacer()
+                        .with_flex_child(
+                            Container::new(ChatList::build_ui())
+                                .background(BACKGROUND_SPECIAL_COLOR)
+                                .rounded(druid::theme::BUTTON_BORDER_RADIUS)
+                                .expand(),
+                            70.0,
+                        )
+                        .with_default_spacer()
+                        .with_flex_child(
+                            TextBox::multiline()
+                                .with_placeholder("Type your message here...")
+                                .with_text_size(TEXT_SIZE)
+                                //.with_formatter(MaxCharactersFormatter::new(MAX_MESSAGE_SIZE))
+                                .controller(CustomTextBoxController::new())
+                                .lens(ApplicationState::main_layout.then(MainLayout::message))
+                                .expand(),
+                            10.0,
+                        ),
+                    60.0,
+                )
+                .with_default_spacer()
+                .with_flex_child(
+                    Flex::column()
+                        .must_fill_main_axis(true)
+                        .cross_axis_alignment(CrossAxisAlignment::Start)
+                        .with_flex_child(SizedBox::empty().expand(), 10.0)
+                        .with_flex_child(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!("Connected: {}", data.main_layout.connected_count_text)
+                            })
+                            .with_text_size(TEXT_SIZE),
+                            10.0,
+                        )
+                        .with_default_spacer()
+                        .with_flex_child(
+                            Container::new(ConnectedList::build_ui())
+                                .background(BACKGROUND_SPECIAL_COLOR)
+                                .rounded(druid::theme::BUTTON_BORDER_RADIUS)
+                                .expand(),
+                            80.0,
+                        ),
+                    40.0,
+                ),
+        )
+    }
+    pub fn set_user_talking(&mut self, username: &str, talk_start: bool) {
+        let mut found = false;
+        {
+            let mut rooms_guard = self.connected_list.rooms.lock().unwrap();
+
+            for room in rooms_guard.iter_mut() {
+                let mut users_guard = room.users.lock().unwrap();
+
+                for user in users_guard.iter_mut() {
+                    if &user.user_data.username == username {
+                        user.user_data.is_talking = talk_start;
+                        found = true;
+                        self.connected_list.refresh_ui = !self.connected_list.refresh_ui;
+                        break;
+                    }
+                }
+                if found {
+                    break;
+                }
+            }
+        }
+
+        if found == false {
+            self.add_system_message(format!(
+                "Warning: can't find user {}, at [{}:{}]",
+                username,
+                file!(),
+                line!()
+            ));
+        }
+    }
     pub fn play_connect_sound(&self) {
         thread::spawn(move || {
-            let mut audio = Audio::new();
-            audio.add("sound", CONNECTED_SOUND_PATH);
-            audio.play("sound"); // Execution continues while playback occurs in another thread.
-            audio.wait(); // Block until sounds finish playing
+            let buffer = SoundBuffer::from_file(CONNECTED_SOUND_PATH).unwrap();
+            let mut sound = Sound::with_buffer(&buffer);
+            sound.play();
+            while sound.status() == SoundStatus::PLAYING {
+                std::thread::sleep(Duration::from_secs(1));
+            }
         });
     }
-    pub fn is_modal_window_showed(&self) -> bool {
-        self.modal_state.is_shown()
-    }
-    pub fn show_modal_window(&mut self, message: String) {
-        self.modal_state.inner_mut().message = message;
-        self.modal_state.show(true);
-    }
-    pub fn hide_modal_window(&mut self) {
-        self.modal_state.show(false);
-    }
     pub fn open_selected_user_info(&mut self, username: String) {
-        self.users_list.open_selected_user_info(username);
+        self.connected_list.open_selected_user_info(username);
     }
     pub fn hide_user_info(&mut self) {
-        self.users_list.hide_user_info();
+        self.connected_list.hide_user_info();
     }
     pub fn get_message_input(&self) -> String {
-        self.message_string.clone()
+        self.message.clone()
     }
     pub fn set_user_ping(&mut self, username: &str, ping_ms: u16) -> Result<(), ()> {
-        self.users_list.set_user_ping(username, ping_ms)
+        self.connected_list.set_user_ping(username, ping_ms)
     }
     pub fn clear_message_input(&mut self) {
-        self.message_string.clear();
+        self.message.clear();
     }
     pub fn clear_text_chat(&mut self) {
         self.chat_list.clear_text_chat();
@@ -114,31 +174,44 @@ impl MainLayout {
         dont_show_notice: bool,
     ) -> Result<(), String> {
         if !dont_show_notice {
-            self.add_info_message(format!("{} just connected to the chat.", &username));
+            self.chat_list
+                .add_info_message(format!("{} just connected to the chat.", &username));
 
             if self.current_user_room == DEFAULT_ROOM_NAME {
                 thread::spawn(move || {
-                    let mut audio = Audio::new();
-                    audio.add("sound", CONNECTED_SOUND_PATH);
-                    audio.play("sound"); // Execution continues while playback occurs in another thread.
-                    audio.wait(); // Block until sounds finish playing
+                    let buffer = SoundBuffer::from_file(CONNECTED_SOUND_PATH).unwrap();
+                    let mut sound = Sound::with_buffer(&buffer);
+                    sound.play();
+                    while sound.status() == SoundStatus::PLAYING {
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
                 });
             }
         }
 
-        let res = self.users_list.add_user(username, room, ping_ms);
+        let res = self.connected_list.add_user(username, room, ping_ms);
         if let Err(msg) = res {
             return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
         }
-        self.connected_users = self.users_list.get_user_count();
 
         Ok(())
     }
+    pub fn get_room_count(&self) -> usize {
+        self.connected_list.get_room_count()
+    }
     pub fn add_room(&mut self, room_name: String) {
-        self.users_list.add_room(room_name);
+        self.connected_list.add_room(room_name);
     }
     pub fn move_user(&mut self, username: &str, room_to: &str) -> Result<(), String> {
-        if let Err(msg) = self.users_list.move_user(
+        if self.current_user_name.is_empty() {
+            panic!("self.current_user_name is empty");
+        }
+
+        if self.current_user_room.is_empty() {
+            panic!("self.current_user_room is empty");
+        }
+
+        if let Err(msg) = self.connected_list.move_user(
             username,
             room_to,
             &self.current_user_name,
@@ -152,20 +225,22 @@ impl MainLayout {
     pub fn remove_user(&mut self, username: &str) -> Result<(), String> {
         let mut removed_user_room = String::new();
         match self
-            .users_list
+            .connected_list
             .remove_user(username, &mut removed_user_room)
         {
             Err(msg) => return Err(format!("{} at [{}, {}]", msg, file!(), line!())),
             Ok(()) => {
-                self.connected_users = self.users_list.get_user_count();
-                self.add_info_message(format!("{} disconnected from the chat.", username));
+                self.chat_list
+                    .add_info_message(format!("{} disconnected from the chat.", username));
 
                 if self.current_user_room == removed_user_room {
                     thread::spawn(move || {
-                        let mut audio = Audio::new();
-                        audio.add("sound", DISCONNECT_SOUND_PATH);
-                        audio.play("sound"); // Execution continues while playback occurs in another thread.
-                        audio.wait(); // Block until sounds finish playing
+                        let buffer = SoundBuffer::from_file(DISCONNECT_SOUND_PATH).unwrap();
+                        let mut sound = Sound::with_buffer(&buffer);
+                        sound.play();
+                        while sound.status() == SoundStatus::PLAYING {
+                            std::thread::sleep(Duration::from_secs(1));
+                        }
                     });
                 }
 
@@ -183,104 +258,115 @@ impl MainLayout {
         self.chat_list.add_info_message(message);
     }
     pub fn clear_all_users(&mut self) {
-        self.users_list.clear_all_users();
-        self.connected_users = 0;
+        self.connected_list.clear_all_users();
     }
-    pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
-        let left: Column<MainMessage> = Column::new()
-            .align_items(Align::Center)
-            .padding(5)
-            .spacing(5)
-            .push(
-                Row::new()
-                    .push(
-                        Button::new(
-                            &mut self.settings_button,
-                            Text::new("settings").color(Color::WHITE).size(18),
-                        )
-                        .on_press(MainMessage::ToSettingsButtonPressed)
-                        .style(current_style.theme)
-                        .width(Length::Shrink),
-                    )
-                    .height(Length::FillPortion(6)),
-            )
-            .push(
-                Text::new("Text Chat")
-                    .horizontal_alignment(HorizontalAlignment::Center)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .color(Color::WHITE)
-                    .height(Length::FillPortion(5)),
-            )
-            .push(
-                self.chat_list
-                    .get_ui(current_style)
-                    .height(Length::FillPortion(83)),
-            )
-            .push(
-                Row::new()
-                    .push(
-                        TextInput::new(
-                            &mut self.message_input,
-                            "Type your message here...",
-                            &self.message_string,
-                            MainMessage::MessageInputChanged,
-                        )
-                        .on_submit(MainMessage::MessageFromMainLayout(
-                            MainLayoutMessage::MessageInputEnterPressed,
-                        ))
-                        .size(22)
-                        .style(current_style.theme),
-                    )
-                    .height(Length::FillPortion(7)),
-            );
+    fn on_settings_clicked(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        data.current_layout = Layout::Settings;
+    }
+    pub fn send_message_event(data: &mut ApplicationState) {
+        if !data.main_layout.message.is_empty() {
+            // remove last '\n's
+            while data.main_layout.message.chars().last().unwrap() == '\n' {
+                data.main_layout.message.pop();
+            }
 
-        let right: Column<MainMessage> = Column::new()
-            .align_items(Align::Center)
-            .padding(5)
-            .spacing(5)
-            .push(Row::new().height(Length::FillPortion(6)))
-            .push(
-                Text::new(format!("Connected: {}", self.connected_users))
-                    .horizontal_alignment(HorizontalAlignment::Center)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .color(Color::WHITE)
-                    .height(Length::FillPortion(5)),
-            )
-            .push(
-                self.users_list
-                    .get_ui(current_style)
-                    .width(Length::Fill)
-                    .height(Length::FillPortion(90)),
-            );
+            if data.main_layout.message.chars().count() > MAX_MESSAGE_SIZE {
+                data.main_layout.add_system_message(format!(
+                    "Your message is too long ({} characters when the limit is {})!",
+                    data.main_layout.message.chars().count(),
+                    MAX_MESSAGE_SIZE
+                ));
+                return;
+            }
 
-        let content = Row::new()
-            .padding(10)
-            .spacing(0)
-            .align_items(Align::Center)
-            .push(left.width(Length::FillPortion(65)))
-            .push(right.width(Length::FillPortion(35)));
+            if let Err(msg) = data
+                .network_service
+                .lock()
+                .unwrap()
+                .send_user_message(data.main_layout.get_message_input())
+            {
+                data.main_layout.add_system_message(msg.message);
+            } else {
+                data.main_layout.clear_message_input();
+            }
+        }
+    }
+    pub fn connect_list_item_pressed_event(
+        data: &mut ApplicationState,
+        button_info: &CustomButtonData,
+    ) {
+        if button_info.is_room {
+            if data.main_layout.current_user_room != button_info.button_name {
+                if let Err(msg) = data
+                    .network_service
+                    .lock()
+                    .unwrap()
+                    .enter_room(&button_info.button_name)
+                {
+                    data.main_layout.add_system_message(msg.message);
+                }
+            }
+        } else {
+            data.main_layout
+                .open_selected_user_info(button_info.button_name.clone());
+        }
+    }
+    pub fn user_volume_slider_moved_event(data: &mut ApplicationState) {
+        // Apply to audio service.
+        let audio_service_guard = data.audio_service.lock().unwrap();
+        let users_audio = audio_service_guard.users_voice_data.lock().unwrap();
+        for user in users_audio.iter() {
+            let mut user_guard = user.lock().unwrap();
+            if &user_guard.username
+                == &data
+                    .main_layout
+                    .connected_list
+                    .user_info_layout
+                    .user_data
+                    .username
+            {
+                user_guard.user_volume = data
+                    .main_layout
+                    .connected_list
+                    .user_info_layout
+                    .user_data
+                    .volume as i32;
+                break;
+            }
+        }
 
-        Modal::new(&mut self.modal_state, content, |state| {
-            Card::new(Text::new("Information"), Text::new(&state.message))
-                .foot(
-                    Row::new().spacing(10).padding(5).width(Length::Fill).push(
-                        Button::new(
-                            &mut state.ok_state,
-                            Text::new("Ok").horizontal_alignment(HorizontalAlignment::Center),
-                        )
-                        .width(Length::Fill)
-                        .on_press(MainMessage::ModalWindowMessage(
-                            ModalMessage::OkButtonPressed,
-                        )),
-                    ),
-                )
-                .max_width(300)
-                //.width(Length::Shrink)
-                .on_close(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
-                .into()
-        })
-        .backdrop(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
-        .on_esc(MainMessage::ModalWindowMessage(ModalMessage::CloseModal))
-        .into()
+        // Apply to data.
+        {
+            let mut rooms_guard = data.main_layout.connected_list.rooms.lock().unwrap();
+
+            let mut ok = false;
+
+            for room in rooms_guard.iter_mut() {
+                let mut users_guard = room.users.lock().unwrap();
+                for user in users_guard.iter_mut() {
+                    if user.user_data.username
+                        == data
+                            .main_layout
+                            .connected_list
+                            .user_info_layout
+                            .user_data
+                            .username
+                    {
+                        user.user_data.volume = data
+                            .main_layout
+                            .connected_list
+                            .user_info_layout
+                            .user_data
+                            .volume;
+                        ok = true;
+                        break;
+                    }
+                }
+
+                if ok {
+                    break;
+                }
+            }
+        }
     }
 }

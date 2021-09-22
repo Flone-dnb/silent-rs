@@ -3,8 +3,9 @@ use aes::Aes128;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
 use bytevec::{ByteDecodable, ByteEncodable};
-use num::bigint::ToBigUint;
-use num::BigUint;
+use druid::{ExtEventSink, Selector, Target};
+use num_bigint::BigUint;
+use num_bigint::ToBigUint;
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::FromPrimitive;
@@ -14,13 +15,24 @@ use rand::Rng;
 // Std.
 use std::io::prelude::*;
 use std::net::*;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
-use crate::InternalMessage;
+
+pub const USER_TCP_SERVICE_USER_CONNECTED: Selector<String> =
+    Selector::new("user_tcp_service_user_connected");
+
+pub const USER_TCP_SERVICE_USER_DISCONNECTED: Selector<String> =
+    Selector::new("user_tcp_service_user_disconnected");
+
+pub const USER_TCP_SERVICE_USER_MESSAGE: Selector<UserMessageInfo> =
+    Selector::new("user_tcp_service_user_message");
+
+pub const USER_TCP_SERVICE_MOVE_USER_TO_ROOM: Selector<UserMoveInfo> =
+    Selector::new("user_tcp_service_move_user_to_room");
 
 #[derive(Debug)]
 pub enum UserState {
@@ -50,6 +62,16 @@ pub enum ClientMessageTcp {
     UserMessage = 0,
     EnterRoom = 1,
     KeepAliveCheck = 2,
+}
+
+pub struct UserMessageInfo {
+    pub username: String,
+    pub message: String,
+}
+
+pub struct UserMoveInfo {
+    pub username: String,
+    pub room_to: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -112,7 +134,7 @@ impl UserTcpService {
         UserTcpService {
             user_state: UserState::NotConnected,
             tcp_socket: None,
-            server_password: server_password,
+            server_password,
             user_info: UserInfo {
                 username: String::from(""),
             },
@@ -334,7 +356,7 @@ impl UserTcpService {
     pub fn enter_room(&mut self, room: &str) -> HandleMessageResult {
         if self.tcp_socket.is_none() {
             return HandleMessageResult::OtherErr(format!(
-                "UserNetService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
+                "UserTcpService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
             ));
         }
 
@@ -421,15 +443,12 @@ impl UserTcpService {
             }
         }
 
-        // TODO: wait for result (if password and etc.)
-        // return Err if not entered!!! (see main.rs at 'MainLayoutMessage::RoomItemPressed')
-
         HandleMessageResult::Ok
     }
     pub fn send_user_text_message(&mut self, message: String) -> HandleMessageResult {
         if self.tcp_socket.is_none() {
             return HandleMessageResult::OtherErr(format!(
-                "UserNetService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
+                "UserTcpService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
             ));
         }
 
@@ -529,7 +548,7 @@ impl UserTcpService {
 
         if self.tcp_socket.is_none() {
             return IoResult::Err(format!(
-                "UserNetService::read_from_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
+                "UserTcpService::read_from_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
                 file!(),
                 line!()
             ));
@@ -568,7 +587,7 @@ impl UserTcpService {
     pub fn write_to_socket(&mut self, buf: &mut [u8]) -> IoResult {
         if self.tcp_socket.is_none() {
             return IoResult::Err(format!(
-                "UserNetService::write_to_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
+                "UserTcpService::write_to_socket_tcp() failed, error: tcp_socket was None at [{}, {}]",
                 file!(),
                 line!()
             ));
@@ -607,7 +626,7 @@ impl UserTcpService {
     pub fn handle_message(
         &mut self,
         message: ServerMessageTcp,
-        internal_messages_ok_only: &Arc<Mutex<Vec<InternalMessage>>>,
+        event_sink: ExtEventSink,
     ) -> HandleMessageResult {
         if message == ServerMessageTcp::KeepAliveCheck {
             // resend this
@@ -637,16 +656,14 @@ impl UserTcpService {
 
         match message {
             ServerMessageTcp::UserConnected => {
-                internal_messages_ok_only
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserConnected(username));
+                event_sink
+                    .submit_command(USER_TCP_SERVICE_USER_CONNECTED, username, Target::Auto)
+                    .expect("failed to submit USER_TCP_SERVICE_USER_CONNECTED command");
             }
             ServerMessageTcp::UserDisconnected => {
-                internal_messages_ok_only
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserDisconnected(username));
+                event_sink
+                    .submit_command(USER_TCP_SERVICE_USER_DISCONNECTED, username, Target::Auto)
+                    .expect("failed to submit USER_TCP_SERVICE_USER_DISCONNECTED command");
             }
             ServerMessageTcp::UserMessage => {
                 let mut encrypted_message = Vec::new();
@@ -691,10 +708,13 @@ impl UserTcpService {
                 }
                 let message = message.unwrap();
 
-                internal_messages_ok_only
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserMessage { username, message });
+                event_sink
+                    .submit_command(
+                        USER_TCP_SERVICE_USER_MESSAGE,
+                        UserMessageInfo { username, message },
+                        Target::Auto,
+                    )
+                    .expect("failed to submit USER_TCP_SERVICE_USER_MESSAGE command");
             }
             ServerMessageTcp::UserEntersRoom => {
                 let mut room = String::new();
@@ -714,13 +734,16 @@ impl UserTcpService {
                     },
                 }
 
-                internal_messages_ok_only
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::MoveUserToRoom {
-                        username,
-                        room_to: room,
-                    });
+                event_sink
+                    .submit_command(
+                        USER_TCP_SERVICE_MOVE_USER_TO_ROOM,
+                        UserMoveInfo {
+                            username,
+                            room_to: room,
+                        },
+                        Target::Auto,
+                    )
+                    .expect("failed to submit USER_TCP_SERVICE_MOVE_USER_TO_ROOM command");
             }
             ServerMessageTcp::KeepAliveCheck => {} // already checked this message above
         }

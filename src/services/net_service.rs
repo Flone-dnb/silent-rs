@@ -1,6 +1,7 @@
 // External.
 use bytevec::ByteDecodable;
 use chrono::prelude::*;
+use druid::{ExtEventSink, Selector, Target};
 use num_traits::FromPrimitive;
 use system_wide_key_state::*;
 
@@ -15,11 +16,19 @@ use crate::global_params::*;
 use crate::services::audio_service::audio_service::*;
 use crate::services::user_tcp_service::*;
 use crate::services::user_udp_service::*;
-use crate::InternalMessage;
+
+pub const NETWORK_SERVICE_SYSTEM_IO_ERROR: Selector<String> =
+    Selector::new("network_service_system_io_error");
+
+pub const NETWORK_SERVICE_UPDATE_CONNECTED_USERS_COUNT: Selector<usize> =
+    Selector::new("network_service_update_connected_users_count");
+
+pub const NETWORK_SERVICE_CLEAR_ALL_USERS: Selector<()> =
+    Selector::new("network_service_clear_all_users");
 
 pub struct ActionError {
     pub message: String,
-    pub show_modal: bool,
+    //pub show_modal_window: bool,
 }
 
 pub struct ClientConfig {
@@ -30,17 +39,20 @@ pub struct ClientConfig {
     pub push_to_talk_key: KeyCode,
 }
 
+#[derive(Clone)] // for ApplicationState
 pub struct PasswordRetrySleep {
     pub sleep_time_start: DateTime<Local>,
     pub sleep_time_sec: usize,
     pub sleep: bool,
 }
 
+#[derive(Clone)] // for ApplicationState
 pub struct NetService {
     pub user_tcp_service: Arc<Mutex<UserTcpService>>,
     pub user_udp_service: Arc<Mutex<UserUdpService>>,
     pub audio_service: Option<Arc<Mutex<AudioService>>>,
     pub password_retry: PasswordRetrySleep,
+    pub event_sink: Option<ExtEventSink>,
     last_time_text_message_sent: DateTime<Local>,
     last_time_entered_room: DateTime<Local>,
 }
@@ -58,11 +70,25 @@ impl NetService {
                 sleep_time_sec: 0,
                 sleep: false,
             },
+            event_sink: None,
         }
     }
 
     pub fn init_audio_service(&mut self, audio_service: Arc<Mutex<AudioService>>) {
         self.audio_service = Some(audio_service);
+    }
+
+    pub fn resend_ping_later(&self, ping_data: UserPingInfo){
+        let event_sink_clone = self.event_sink.clone().unwrap();
+        thread::spawn(move||{
+            thread::sleep(Duration::from_millis(USER_CONNECT_FIRST_UDP_PING_RETRY_INTERVAL_MS as u64));
+            event_sink_clone.submit_command(
+                USER_UDP_SERVICE_UPDATE_USER_PING,
+                UserPingInfo { username: ping_data.username, ping_ms: ping_data.ping_ms, try_again_count: ping_data.try_again_count - 1 },
+                Target::Auto,
+            )
+            .expect("failed to submit USER_UDP_SERVICE_UPDATE_USER_PING command");
+        });
     }
 
     pub fn start(
@@ -71,8 +97,10 @@ impl NetService {
         username: String,
         server_password: String,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
-        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        event_sink: ExtEventSink,
     ) {
+        self.event_sink = Some(event_sink.clone());
+
         if self.password_retry.sleep {
             let time_diff = Local::now() - self.password_retry.sleep_time_start;
             if time_diff.num_seconds() < self.password_retry.sleep_time_sec as i64 {
@@ -92,7 +120,7 @@ impl NetService {
                 user_tcp_service_copy,
                 user_udp_service_copy,
                 connect_layout_sender,
-                internal_messages,
+                event_sink,
                 audio_service_copy,
             )
         });
@@ -102,7 +130,6 @@ impl NetService {
         if time_diff.num_seconds() < SPAM_PROTECTION_SEC as i64 {
             return Err(ActionError {
                 message: String::from("You can't change rooms that quickly!"),
-                show_modal: true,
             });
         }
 
@@ -112,7 +139,6 @@ impl NetService {
                 IoResult::Err(msg) => {
                     return Err(ActionError {
                         message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                        show_modal: false,
                     });
                 }
                 _ => {}
@@ -120,7 +146,6 @@ impl NetService {
             HandleMessageResult::OtherErr(msg) => {
                 return Err(ActionError {
                     message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                    show_modal: false,
                 });
             }
         }
@@ -134,7 +159,6 @@ impl NetService {
         if time_diff.num_seconds() < SPAM_PROTECTION_SEC as i64 {
             return Err(ActionError {
                 message: String::from("You can't send messages that quick!"),
-                show_modal: true,
             });
         }
 
@@ -149,7 +173,6 @@ impl NetService {
                 IoResult::Err(msg) => {
                     return Err(ActionError {
                         message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                        show_modal: false,
                     });
                 }
                 _ => {}
@@ -157,7 +180,6 @@ impl NetService {
             HandleMessageResult::OtherErr(msg) => {
                 return Err(ActionError {
                     message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                    show_modal: false,
                 });
             }
         }
@@ -173,7 +195,7 @@ impl NetService {
         user_tcp_service: Arc<Mutex<UserTcpService>>,
         user_udp_service: Arc<Mutex<UserUdpService>>,
         connect_layout_sender: std::sync::mpsc::Sender<ConnectResult>,
-        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        event_sink: ExtEventSink,
         audio_service: Arc<Mutex<AudioService>>,
     ) {
         let tcp_socket =
@@ -221,45 +243,42 @@ impl NetService {
                 Ok(key) => {
                     user_service_guard.secret_key = key;
                 }
-                Err(e) => {
-                    match e {
-                        HandleMessageResult::Ok => {}
-                        HandleMessageResult::IOError(err) => match err {
-                            IoResult::FIN => {
-                                internal_messages.lock().unwrap().push(
-                                    InternalMessage::SystemIOError(String::from(
-                                        "The server closed connection.",
-                                    )),
-                                );
-                                return;
-                            }
-                            IoResult::Err(msg) => {
-                                internal_messages.lock().unwrap().push(
-                                    InternalMessage::SystemIOError(format!(
-                                        "{} at [{}, {}]",
-                                        msg,
-                                        file!(),
-                                        line!()
-                                    )),
-                                );
-                                return;
-                            }
-                            _ => {}
-                        },
-                        HandleMessageResult::OtherErr(msg) => {
-                            internal_messages
-                                .lock()
-                                .unwrap()
-                                .push(InternalMessage::SystemIOError(format!(
-                                    "{} at [{}, {}]",
-                                    msg,
-                                    file!(),
-                                    line!()
-                                )));
+                Err(e) => match e {
+                    HandleMessageResult::Ok => {}
+                    HandleMessageResult::IOError(err) => match err {
+                        IoResult::FIN => {
+                            event_sink
+                                .submit_command(
+                                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                    String::from("The server closed connection."),
+                                    Target::Auto,
+                                )
+                                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                             return;
                         }
+                        IoResult::Err(msg) => {
+                            event_sink
+                                .submit_command(
+                                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                    format!("{} at [{}, {}]", msg, file!(), line!()),
+                                    Target::Auto,
+                                )
+                                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
+                            return;
+                        }
+                        _ => {}
+                    },
+                    HandleMessageResult::OtherErr(msg) => {
+                        event_sink
+                            .submit_command(
+                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                format!("{} at [{}, {}]", msg, file!(), line!()),
+                                Target::Auto,
+                            )
+                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
+                        return;
                     }
-                }
+                },
             }
 
             match user_service_guard.connect_user(sender) {
@@ -291,10 +310,15 @@ impl NetService {
 
                     // Include myself.
                     connected_users += 1;
-                    internal_messages
-                        .lock()
-                        .unwrap()
-                        .push(InternalMessage::RefreshConnectedUsersCount(connected_users));
+                    event_sink
+                        .submit_command(
+                            NETWORK_SERVICE_UPDATE_CONNECTED_USERS_COUNT,
+                            connected_users,
+                            Target::Auto,
+                        )
+                        .expect(
+                            "failed to submit NETWORK_SERVICE_UPDATE_CONNECTED_USERS_COUNT command",
+                        );
                 }
                 ConnectResult::IoErr(io_error) => {
                     let mut err = io_error;
@@ -317,15 +341,15 @@ impl NetService {
             let username_copy = username.clone();
             let server_name_copy = config.server_name.clone();
             let server_port_copy = config.server_port.clone();
-            let internal_messages_copy = Arc::clone(&internal_messages);
             let push_to_talk_button = config.push_to_talk_key;
             let secret_key_copy = user_tcp_service.lock().unwrap().secret_key.clone();
+            let event_sink_copy = event_sink.clone();
             thread::spawn(move || {
                 NetService::udp_service(
                     username_copy,
                     server_name_copy,
                     server_port_copy,
-                    internal_messages_copy,
+                    event_sink_copy,
                     user_udp_service,
                     audio_service,
                     push_to_talk_button,
@@ -353,14 +377,16 @@ impl NetService {
                             break;
                         }
                         IoResult::Err(msg) => {
-                            let mut internal_messages_guard = internal_messages.lock().unwrap();
-                            internal_messages_guard.push(InternalMessage::SystemIOError(format!(
-                                "{} at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )));
-                            internal_messages_guard.push(InternalMessage::ClearAllUsers);
+                            event_sink
+                                .submit_command(
+                                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                    format!("{} at [{}, {}]", msg, file!(), line!()),
+                                    Target::Auto,
+                                )
+                                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
+                            event_sink
+                                .submit_command(NETWORK_SERVICE_CLEAR_ALL_USERS, (), Target::Auto)
+                                .expect("failed to submit NETWORK_SERVICE_CLEAR_ALL_USERS command");
                             return;
                         }
                     }
@@ -369,26 +395,32 @@ impl NetService {
                 // Got something.
                 let message = u16::decode::<u16>(&in_buf);
                 if let Err(e) = message {
-                    internal_messages
-                        .lock()
-                        .unwrap()
-                        .push(InternalMessage::SystemIOError(format!(
+                    event_sink
+                        .submit_command(
+                            NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                            format!(
                         "u16::decode::<u16>() failed, error: failed to decode on 'in_buf' (error: {}) at [{}, {}].\nClosing connection...",
                         e, file!(), line!()
-                    )));
+                    ),
+                            Target::Auto,
+                        )
+                        .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                     return;
                 }
                 let message = message.unwrap() as u16;
                 let message_id = ServerMessageTcp::from_u16(message);
                 if message_id.is_none() {
                     _fin = true;
-                    internal_messages
-                        .lock()
-                        .unwrap()
-                        .push(InternalMessage::SystemIOError(format!(
+                    event_sink
+                        .submit_command(
+                            NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                            format!(
                         "FromPrimitive::from_u16() failed on 'in_buf' (value: {}) at [{}, {}].\nClosing connection...",
                         message, file!(), line!()
-                    )));
+                    ),
+                            Target::Auto,
+                        )
+                        .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                     break;
                 }
                 let message_id = message_id.unwrap();
@@ -396,7 +428,7 @@ impl NetService {
                 // Handle message.
                 {
                     let mut user_service_guard = user_tcp_service.lock().unwrap();
-                    match user_service_guard.handle_message(message_id, &internal_messages) {
+                    match user_service_guard.handle_message(message_id, event_sink.clone()) {
                         HandleMessageResult::Ok => {}
                         HandleMessageResult::IOError(err) => match err {
                             IoResult::FIN => {
@@ -405,29 +437,28 @@ impl NetService {
                             }
                             IoResult::Err(msg) => {
                                 _fin = true;
-                                internal_messages.lock().unwrap().push(
-                                    InternalMessage::SystemIOError(format!(
-                                        "{} at [{}, {}]",
-                                        msg,
-                                        file!(),
-                                        line!()
-                                    )),
-                                );
+                                event_sink
+                                    .submit_command(
+                                        NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                        format!("{} at [{}, {}]", msg, file!(), line!()),
+                                        Target::Auto,
+                                    )
+                                    .expect(
+                                        "failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command",
+                                    );
                                 break;
                             }
                             _ => {}
                         },
                         HandleMessageResult::OtherErr(msg) => {
                             _fin = true;
-                            internal_messages
-                                .lock()
-                                .unwrap()
-                                .push(InternalMessage::SystemIOError(format!(
-                                    "{} at [{}, {}]",
-                                    msg,
-                                    file!(),
-                                    line!()
-                                )));
+                            event_sink
+                                .submit_command(
+                                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                    format!("{} at [{}, {}]", msg, file!(), line!()),
+                                    Target::Auto,
+                                )
+                                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                             break;
                         }
                     }
@@ -439,16 +470,15 @@ impl NetService {
             }
         }
 
-        internal_messages
-            .lock()
-            .unwrap()
-            .push(InternalMessage::ClearAllUsers);
+        event_sink
+            .submit_command(NETWORK_SERVICE_CLEAR_ALL_USERS, (), Target::Auto)
+            .expect("failed to submit NETWORK_SERVICE_CLEAR_ALL_USERS command");
     }
     fn udp_service(
         username: String,
         server_name: String,
         server_port: String,
-        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        event_sink: ExtEventSink,
         user_udp_service: Arc<Mutex<UserUdpService>>,
         audio_service: Arc<Mutex<AudioService>>,
         push_to_talk_key: KeyCode,
@@ -456,42 +486,51 @@ impl NetService {
     ) {
         let udp_socket = UdpSocket::bind("0.0.0.0:0");
         if let Err(e) = udp_socket {
-            internal_messages
-                .lock()
-                .unwrap()
-                .push(InternalMessage::SystemIOError(format!(
-                    "UdpSocket::bind() failed, error: {}, at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                )));
+            event_sink
+                .submit_command(
+                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                    format!(
+                        "UdpSocket::bind() failed, error: {}, at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    ),
+                    Target::Auto,
+                )
+                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
             return;
         }
         let udp_socket = udp_socket.unwrap();
 
         if let Err(e) = udp_socket.set_nonblocking(true) {
-            internal_messages
-                .lock()
-                .unwrap()
-                .push(InternalMessage::SystemIOError(format!(
-                    "udp_socket.set_nonblocking() failed, error: {}, at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                )));
+            event_sink
+                .submit_command(
+                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                    format!(
+                        "udp_socket.set_nonblocking() failed, error: {}, at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    ),
+                    Target::Auto,
+                )
+                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
             return;
         }
 
         if let Err(e) = udp_socket.connect(format!("{}:{}", server_name, server_port)) {
-            internal_messages
-                .lock()
-                .unwrap()
-                .push(InternalMessage::SystemIOError(format!(
-                    "udp_socket.connect() failed, error: {}, at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                )));
+            event_sink
+                .submit_command(
+                    NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                    format!(
+                        "udp_socket.connect() failed, error: {}, at [{}, {}]",
+                        e,
+                        file!(),
+                        line!()
+                    ),
+                    Target::Auto,
+                )
+                .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
             return;
         }
 
@@ -499,15 +538,18 @@ impl NetService {
         {
             let res = udp_socket.try_clone();
             if let Err(e) = res {
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::SystemIOError(format!(
-                        "udp_socket.try_clone() failed, error: {}, at [{}, {}]",
-                        e,
-                        file!(),
-                        line!()
-                    )));
+                event_sink
+                    .submit_command(
+                        NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                        format!(
+                            "udp_socket.try_clone() failed, error: {}, at [{}, {}]",
+                            e,
+                            file!(),
+                            line!()
+                        ),
+                        Target::Auto,
+                    )
+                    .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                 return;
             }
 
@@ -519,15 +561,13 @@ impl NetService {
         match user_udp_service.lock().unwrap().connect(&udp_socket) {
             Ok(()) => {}
             Err(msg) => {
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::SystemIOError(format!(
-                        "{}, at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
+                event_sink
+                    .submit_command(
+                        NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                        format!("{}, at [{}, {}]", msg, file!(), line!()),
+                        Target::Auto,
+                    )
+                    .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                 return;
             }
         }
@@ -536,7 +576,7 @@ impl NetService {
         {
             let audio_service_guard = audio_service.lock().unwrap();
             audio_service_guard
-                .start_waiting_for_voice(push_to_talk_key, Arc::clone(&audio_service));
+                .start_waiting_for_voice(push_to_talk_key, Arc::clone(audio_service_guard.net_service.as_ref().unwrap()));
         }
 
         loop {
@@ -563,21 +603,24 @@ impl NetService {
                         continue;
                     }
                     Err(e) => {
-                        internal_messages
-                            .lock()
-                            .unwrap()
-                            .push(InternalMessage::SystemIOError(format!(
-                                "udp_socket.peek_from() failed, error: {}, at [{}, {}]",
-                                e,
-                                file!(),
-                                line!()
-                            )));
+                        event_sink
+                            .submit_command(
+                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                format!(
+                                    "udp_socket.peek_from() failed, error: {}, at [{}, {}]",
+                                    e,
+                                    file!(),
+                                    line!()
+                                ),
+                                Target::Auto,
+                            )
+                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                         return;
                     }
                 }
             }
 
-            // there is some data receive it
+            // there is some data, receive it
             {
                 // this might sleep a little (inside of recv())
                 match user_udp_service
@@ -587,15 +630,13 @@ impl NetService {
                 {
                     Ok(()) => {}
                     Err(msg) => {
-                        internal_messages
-                            .lock()
-                            .unwrap()
-                            .push(InternalMessage::SystemIOError(format!(
-                                "{}, at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )));
+                        event_sink
+                            .submit_command(
+                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                format!("{}, at [{}, {}]", msg, file!(), line!()),
+                                Target::Auto,
+                            )
+                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                         return;
                     }
                 }
@@ -603,45 +644,26 @@ impl NetService {
 
             // handle received data
             {
-                // TODO: fix this (don't lock audio service that early)
-                // [current architecture design requires locking audio service here (before locking udp service)]
-                // when talking about voice messages, this thread will lock udp service first (at .handle_message() below)
-                // and inside of handle_message() (if we received a voice message) will lock audio service
-                // but if we are already playing voice right now
-                // audio service (when recorded a new chunk of voice) will lock the audio service to access the udp service
-                // a deadlock will occur, due to this:
-                // [this thread]: locks udp service to handle voice message (not locked audio service yet)
-                // [voice recorder thread]: locks audio service to access udp service (not locked udp service yet)
-                // [this thread]: trying to lock audio service to access it in the end of the handle_message()
-                // but it's locked by the voice recorder thread
-                // [voice recorder thread]: trying to lock udp service to send a voice message
-                // but it's locked by this thread
-                let mut audio_service_guard = audio_service.lock().unwrap();
-
                 // this might sleep a little (inside of handle_message())
                 match user_udp_service.lock().unwrap().handle_message(
                     &udp_socket,
                     &mut in_buf,
-                    &internal_messages,
-                    &mut audio_service_guard,
+                    event_sink.clone(),
+                    audio_service.clone(),
                 ) {
                     Ok(()) => {}
                     Err(msg) => {
-                        internal_messages
-                            .lock()
-                            .unwrap()
-                            .push(InternalMessage::SystemIOError(format!(
-                                "{}, at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )));
+                        event_sink
+                            .submit_command(
+                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                format!("{}, at [{}, {}]", msg, file!(), line!()),
+                                Target::Auto,
+                            )
+                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                         return;
                     }
                 }
             }
         }
-
-        // End.
     }
 }

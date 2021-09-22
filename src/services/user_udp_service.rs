@@ -3,6 +3,7 @@ use aes::Aes128;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
 use bytevec::{ByteDecodable, ByteEncodable};
+use druid::{ExtEventSink, Selector, Target};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::cast::ToPrimitive;
@@ -11,15 +12,23 @@ use num_traits::FromPrimitive;
 // Std.
 use std::io::ErrorKind;
 use std::net::*;
-use std::sync::MutexGuard;
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex, Arc};
 use std::thread;
 use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
 use crate::services::audio_service::audio_service::*;
-use crate::InternalMessage;
+
+pub const USER_UDP_SERVICE_UPDATE_USER_PING: Selector<UserPingInfo> =
+    Selector::new("user_udp_servce_update_user_ping");
+
+#[derive(Clone)]
+pub struct UserPingInfo {
+    pub username: String,
+    pub ping_ms: u16,
+    pub try_again_count: u8,
+}
 
 #[derive(FromPrimitive, ToPrimitive, PartialEq)]
 pub enum ServerMessageUdp {
@@ -36,7 +45,6 @@ pub enum ClientMessageUdp {
 
 #[derive(Debug)]
 pub struct UserUdpService {
-    is_udp_connected: bool,
     io_udp_mutex: Mutex<()>,
     udp_socket_copy: Option<UdpSocket>,
     username: String,
@@ -46,7 +54,6 @@ pub struct UserUdpService {
 impl UserUdpService {
     pub fn new() -> Self {
         UserUdpService {
-            is_udp_connected: false,
             io_udp_mutex: Mutex::new(()),
             udp_socket_copy: None,
             username: String::from(""),
@@ -158,8 +165,8 @@ impl UserUdpService {
         &self,
         udp_socket: &UdpSocket,
         buf: &mut [u8],
-        internal_messages: &Arc<Mutex<Vec<InternalMessage>>>,
-        audio_service_guard: &mut MutexGuard<AudioService>,
+        event_sink: ExtEventSink,
+        audio_service: Arc<Mutex<AudioService>>,
     ) -> Result<(), String> {
         match FromPrimitive::from_u8(buf[0]) {
             Some(ServerMessageUdp::PingCheck) => {
@@ -198,14 +205,13 @@ impl UserUdpService {
                 }
                 let ping_ms = ping_ms.unwrap();
 
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserPing {
-                        username,
-                        ping_ms,
-                        try_again_number: USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT,
-                    });
+                event_sink
+                    .submit_command(
+                        USER_UDP_SERVICE_UPDATE_USER_PING,
+                        UserPingInfo { username, ping_ms, try_again_count: USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT },
+                        Target::Auto,
+                    )
+                    .expect("failed to submit USER_UDP_SERVICE_UPDATE_USER_PING command");
             }
             Some(ServerMessageUdp::VoiceMessage) => {
                 // Packet structure:
@@ -287,11 +293,7 @@ impl UserUdpService {
                     voice_data_vec.push(_val);
                 }
 
-                audio_service_guard.add_user_voice_chunk(
-                    username,
-                    voice_data_vec,
-                    Arc::clone(&internal_messages),
-                );
+                audio_service.lock().unwrap().add_user_voice_chunk(username, voice_data_vec, event_sink);
             }
             None => {
                 return Err(format!(
@@ -340,6 +342,10 @@ impl UserUdpService {
             match udp_socket.peek(buf) {
                 Ok(n) => {
                     return Ok(n);
+                }
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_UDP_MESSAGE_MS));
+                    continue;
                 }
                 Err(e) => return Err(e),
             }

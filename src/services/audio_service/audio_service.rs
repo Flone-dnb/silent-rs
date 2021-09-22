@@ -1,8 +1,9 @@
 // External.
-use rusty_audio::Audio;
+use druid::{ExtEventSink, Selector, Target};
 use sfml::audio::SoundRecorderDriver;
 use sfml::audio::SoundSource;
 use sfml::audio::SoundStreamPlayer;
+use sfml::audio::{Sound, SoundBuffer, SoundStatus};
 use system_wide_key_state::*;
 
 // Std.
@@ -16,7 +17,6 @@ use super::voice_player::*;
 use super::voice_recorder::*;
 use crate::global_params::*;
 use crate::services::net_service::*;
-use crate::InternalMessage;
 
 const INTERVAL_PROCESS_VOICE_MS: i32 = 10;
 const INTERVAL_WAIT_FOR_NEW_CHUNKS: u64 = 10;
@@ -25,6 +25,11 @@ const SAMPLE_RATE: u32 = 19400;
 const MIN_CHUNKS_TO_RECORD: usize = 6;
 const MIN_CHUNKS_TO_START_PLAY: usize = 3;
 const INTERVAL_CHECK_PUSH_TO_TALK_MS: u64 = 5;
+
+pub const AUDIO_SERVICE_ON_USER_TALK_START: Selector<String> =
+    Selector::new("audio_service_on_user_talk_start");
+pub const AUDIO_SERVICE_ON_USER_TALK_END: Selector<String> =
+    Selector::new("audio_service_on_user_talk_end");
 
 pub struct UserVoiceData {
     pub username: String,
@@ -44,10 +49,11 @@ impl UserVoiceData {
     }
 }
 
+#[derive(Clone)] // for ApplicationState
 pub struct AudioService {
     pub users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
-    net_service: Option<Arc<Mutex<NetService>>>,
-    mtx_listen_push_to_talk: Mutex<bool>,
+    pub net_service: Option<Arc<Mutex<NetService>>>,
+    mtx_listen_push_to_talk: Arc<Mutex<bool>>, // because Mutex does not implement Clone
     master_output_volume: i32,
 }
 
@@ -55,7 +61,7 @@ impl Default for AudioService {
     fn default() -> Self {
         AudioService {
             net_service: None,
-            mtx_listen_push_to_talk: Mutex::new(false),
+            mtx_listen_push_to_talk: Arc::new(Mutex::new(false)),
             users_voice_data: Arc::new(Mutex::new(Vec::new())),
             master_output_volume: 0,
         }
@@ -71,7 +77,7 @@ impl AudioService {
         &mut self,
         username: String,
         voice_data: Vec<i16>,
-        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        event_sink: ExtEventSink,
     ) {
         let users_voice_data_guard = self.users_voice_data.lock().unwrap();
 
@@ -97,7 +103,7 @@ impl AudioService {
                     let user_copy = Arc::clone(&users_voice_data_guard[found_index]);
                     let master_volume = self.master_output_volume;
                     thread::spawn(move || {
-                        AudioService::play_user_voice(user_copy, master_volume, internal_messages);
+                        AudioService::play_user_voice(user_copy, master_volume, event_sink);
                     });
                 }
             }
@@ -113,7 +119,7 @@ impl AudioService {
     pub fn start_waiting_for_voice(
         &self,
         push_to_talk_key: KeyCode,
-        audio_service: Arc<Mutex<AudioService>>,
+        net_service: Arc<Mutex<NetService>>,
     ) {
         let mut guard = self.mtx_listen_push_to_talk.lock().unwrap();
         if *guard {
@@ -124,7 +130,7 @@ impl AudioService {
         }
 
         thread::spawn(move || {
-            AudioService::record_voice(push_to_talk_key, audio_service);
+            AudioService::record_voice(push_to_talk_key, net_service);
         });
     }
 }
@@ -133,7 +139,7 @@ impl AudioService {
     pub fn play_user_voice(
         user: Arc<Mutex<UserVoiceData>>,
         master_volume: i32,
-        internal_messages: Arc<Mutex<Vec<InternalMessage>>>,
+        event_sink: ExtEventSink,
     ) {
         let mut stop = false;
         let mut last_time_recv_chunk = chrono::Local::now();
@@ -196,10 +202,13 @@ impl AudioService {
             _user_volume = user_guard.user_volume;
 
             {
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserTalkOn(user_guard.username.clone()))
+                event_sink
+                    .submit_command(
+                        AUDIO_SERVICE_ON_USER_TALK_START,
+                        user_guard.username.clone(),
+                        Target::Auto,
+                    )
+                    .expect("failed to submit AUDIO_SERVICE_ON_USER_TALK_START command");
             }
         }
 
@@ -259,14 +268,17 @@ impl AudioService {
             *user_guard.mtx_output_playing.lock().unwrap() = false;
 
             {
-                internal_messages
-                    .lock()
-                    .unwrap()
-                    .push(InternalMessage::UserTalkOff(user_guard.username.clone()))
+                event_sink
+                    .submit_command(
+                        AUDIO_SERVICE_ON_USER_TALK_END,
+                        user_guard.username.clone(),
+                        Target::Auto,
+                    )
+                    .expect("failed to submit AUDIO_SERVICE_ON_USER_TALK_END command");
             }
         }
     }
-    pub fn record_voice(push_to_talk_key: KeyCode, audio_service: Arc<Mutex<AudioService>>) {
+    pub fn record_voice(push_to_talk_key: KeyCode, network_service: Arc<Mutex<NetService>>) {
         let (sample_sender, sample_receiver) = mpsc::channel();
         let mut voice_recorder = VoiceRecorder::new(sample_sender);
         let mut driver = SoundRecorderDriver::new(&mut voice_recorder);
@@ -282,10 +294,12 @@ impl AudioService {
 
                 // Play push-to-talk sound.
                 thread::spawn(move || {
-                    let mut audio = Audio::new();
-                    audio.add("sound", PUSH_TO_TALK_PRESS_SOUND);
-                    audio.play("sound"); // Execution continues while playback occurs in another thread.
-                    audio.wait(); // Block until sounds finish playing
+                    let buffer = SoundBuffer::from_file(PUSH_TO_TALK_PRESS_SOUND).unwrap();
+                    let mut sound = Sound::with_buffer(&buffer);
+                    sound.play();
+                    while sound.status() == SoundStatus::PLAYING {
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
                 });
 
                 driver.start(SAMPLE_RATE);
@@ -309,13 +323,7 @@ impl AudioService {
 
                         {
                             // Send to net service.
-                            let audio_service_guard = audio_service.lock().unwrap();
-                            let net_service_guard = audio_service_guard
-                                .net_service
-                                .as_ref()
-                                .unwrap()
-                                .lock()
-                                .unwrap();
+                            let net_service_guard = network_service.lock().unwrap();
 
                             net_service_guard
                                 .user_udp_service
@@ -343,23 +351,18 @@ impl AudioService {
 
                 // Play push-to-talk sound.
                 thread::spawn(move || {
-                    let mut audio = Audio::new();
-                    audio.add("sound", PUSH_TO_TALK_UNPRESS_SOUND);
-                    audio.play("sound"); // Execution continues while playback occurs in another thread.
-                    audio.wait(); // Block until sounds finish playing
+                    let buffer = SoundBuffer::from_file(PUSH_TO_TALK_UNPRESS_SOUND).unwrap();
+                    let mut sound = Sound::with_buffer(&buffer);
+                    sound.play();
+                    while sound.status() == SoundStatus::PLAYING {
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
                 });
 
                 // Send emtpy packet as final
                 {
                     let empty_data: Vec<i16> = Vec::new();
-                    let audio_service_guard = audio_service.lock().unwrap();
-
-                    let net_service_guard = audio_service_guard
-                        .net_service
-                        .as_ref()
-                        .unwrap()
-                        .lock()
-                        .unwrap();
+                    let net_service_guard = network_service.lock().unwrap();
                     net_service_guard
                         .user_udp_service
                         .lock()

@@ -1,117 +1,210 @@
 // External.
-use iced::{
-    button, text_input, Align, Button, Color, Column, Element, HorizontalAlignment, Length, Row,
-    Text, TextInput,
+use chrono::Local;
+use druid::widget::prelude::*;
+use druid::widget::{
+    Button, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, SizedBox, TextBox,
 };
-use system_wide_key_state::KeyCode;
+use druid::{Lens, LensExt, TextAlignment, WidgetExt};
+use system_wide_key_state::*;
+
+// Std.
+use std::sync::{mpsc, Arc, Mutex};
 
 // Custom.
 use crate::global_params::*;
+//use crate::misc::formatter_max_characters::*; // add formatter when #1975 is resolved
+use crate::services::audio_service::audio_service::UserVoiceData;
 use crate::services::config_service::*;
-use crate::services::net_service::ClientConfig;
-use crate::services::user_tcp_service::{ConnectResult, IoResult};
-use crate::themes::*;
-use crate::MainMessage;
+use crate::services::net_service::*;
+use crate::services::user_tcp_service::*;
+use crate::ApplicationState;
+use crate::Layout;
 
-#[derive(Debug, Clone)]
-pub enum ConnectLayoutMessage {
-    ConnectButtonPressed,
-}
+const WIDTH_SPACING: f64 = 2.0;
 
-#[derive(Debug)]
+#[derive(Clone, Data, Lens)]
 pub struct ConnectLayout {
-    pub username_string: String,
-    pub servername_string: String,
-    pub port_string: String,
-    pub password_string: String,
-
-    connect_result: ConnectResult,
-    show_input_notice: bool,
-
-    username_input: text_input::State,
-    servername_input: text_input::State,
-    port_input: text_input::State,
-    password_input: text_input::State,
-    connect_button: button::State,
-    settings_button: button::State,
-}
-
-impl Default for ConnectLayout {
-    fn default() -> Self {
-        Self {
-            port_string: DEFAULT_SERVER_PORT.to_string(),
-            username_string: String::default(),
-            servername_string: String::default(),
-            password_string: String::default(),
-
-            connect_result: ConnectResult::Ok,
-            show_input_notice: false,
-
-            username_input: text_input::State::default(),
-            servername_input: text_input::State::default(),
-            port_input: text_input::State::default(),
-            password_input: text_input::State::default(),
-            connect_button: button::State::default(),
-            settings_button: button::State::default(),
-        }
-    }
+    pub username: String,
+    pub server: String,
+    pub port: String,
+    pub password: String,
+    pub connect_result: String,
+    pub show_input_notice: bool,
 }
 
 impl ConnectLayout {
-    pub fn focus_on_next_item(&mut self) {
-        if self.username_input.is_focused() {
-            self.username_input.unfocus();
-            self.servername_input.focus();
-        } else if self.servername_input.is_focused() {
-            self.servername_input.unfocus();
-            self.port_input.focus();
-        } else if self.port_input.is_focused() {
-            self.port_input.unfocus();
-            self.password_input.focus();
-        } else if self.password_input.is_focused() {
-            self.password_input.unfocus();
-            self.username_input.focus();
+    pub fn new() -> Self {
+        ConnectLayout {
+            username: String::new(),
+            server: String::new(),
+            port: String::from("51337"),
+            password: String::new(),
+            connect_result: String::new(),
+            show_input_notice: false,
         }
     }
-    pub fn read_user_config(&mut self) -> Result<(), String> {
-        let config = UserConfig::new();
-        if let Err(msg) = config {
-            return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
-        }
-        let config = config.unwrap();
-
-        self.username_string = config.username;
-        self.servername_string = config.server;
-        self.port_string = config.server_port.to_string();
-        self.password_string = config.server_password;
+    pub fn build_ui() -> impl Widget<ApplicationState> {
+        Flex::column()
+            .main_axis_alignment(MainAxisAlignment::Center)
+            .must_fill_main_axis(true)
+            .with_flex_child(SizedBox::empty().expand(), 15.0)
+            .with_flex_child(
+                Flex::row()
+                    .main_axis_alignment(MainAxisAlignment::Center)
+                    .must_fill_main_axis(true)
+                    .with_flex_child(SizedBox::empty().expand(), WIDTH_SPACING)
+                    .with_flex_child(
+                        Flex::column()
+                            .cross_axis_alignment(CrossAxisAlignment::Start)
+                            .with_flex_child(
+                                Label::new("Username: ").with_text_size(TEXT_SIZE).expand(),
+                                1.0,
+                            )
+                            .with_default_spacer()
+                            .with_flex_child(
+                                Label::new("Server: ").with_text_size(TEXT_SIZE).expand(),
+                                1.0,
+                            )
+                            .with_default_spacer()
+                            .with_flex_child(
+                                Label::new("Port: ").with_text_size(TEXT_SIZE).expand(),
+                                1.0,
+                            )
+                            .with_default_spacer()
+                            .with_flex_child(
+                                Label::new("Password: ").with_text_size(TEXT_SIZE).expand(),
+                                1.0,
+                            ),
+                        1.0,
+                    )
+                    .with_flex_child(SizedBox::empty().expand(), WIDTH_SPACING)
+                    .with_flex_child(
+                        Flex::column()
+                            .with_flex_child(
+                                TextBox::new()
+                                    .with_placeholder("Type your username...")
+                                    .with_text_size(TEXT_SIZE)
+                                    //.with_formatter(MaxCharactersFormatter::new(MAX_USERNAME_SIZE))
+                                    .lens(
+                                        ApplicationState::connect_layout
+                                            .then(ConnectLayout::username),
+                                    )
+                                    .expand(),
+                                1.0,
+                            )
+                            .with_default_spacer()
+                            .with_flex_child(
+                                TextBox::new()
+                                    .with_placeholder("IP or domain name...")
+                                    .with_text_size(TEXT_SIZE)
+                                    .lens(
+                                        ApplicationState::connect_layout
+                                            .then(ConnectLayout::server),
+                                    )
+                                    .expand(),
+                                1.0,
+                            )
+                            .with_default_spacer()
+                            .with_flex_child(
+                                TextBox::new()
+                                    .with_text_size(TEXT_SIZE)
+                                    //.with_formatter(MaxCharactersFormatter::new(5))
+                                    .lens(
+                                        ApplicationState::connect_layout.then(ConnectLayout::port),
+                                    )
+                                    .expand(),
+                                1.0,
+                            )
+                            .with_default_spacer()
+                            .with_flex_child(
+                                TextBox::new()
+                                    .with_text_size(TEXT_SIZE)
+                                    .with_placeholder("(optional)")
+                                    //.with_formatter(MaxCharactersFormatter::new(MAX_PASSWORD_SIZE))
+                                    .lens(
+                                        ApplicationState::connect_layout
+                                            .then(ConnectLayout::password),
+                                    )
+                                    .expand(),
+                                1.0,
+                            ),
+                        5.0,
+                    )
+                    .with_flex_child(SizedBox::empty().expand(), WIDTH_SPACING)
+                    .expand(),
+                35.0,
+            )
+            .with_default_spacer()
+            .with_flex_child(
+                Label::new(|data: &ApplicationState, _env: &_| {
+                    if data.connect_layout.show_input_notice {
+                        "Please fill all non-optional fields.".to_string()
+                    } else {
+                        data.connect_layout.connect_result.clone()
+                    }
+                })
+                .with_text_size(TEXT_SIZE)
+                .with_text_alignment(TextAlignment::Center)
+                .with_line_break_mode(LineBreaking::WordWrap),
+                5.0,
+            )
+            .with_flex_child(SizedBox::empty().expand(), 5.0)
+            .with_flex_child(
+                Flex::row()
+                    .with_flex_child(SizedBox::empty().expand(), 35.0)
+                    .with_flex_child(
+                        Button::from_label(Label::new("Connect").with_text_size(TEXT_SIZE))
+                            .on_click(ConnectLayout::on_connect_clicked)
+                            .expand(),
+                        30.0,
+                    )
+                    .with_flex_child(SizedBox::empty().expand(), 35.0),
+                10.0,
+            )
+            .with_flex_child(SizedBox::empty().expand(), 10.0)
+            .with_flex_child(
+                Flex::row()
+                    .with_flex_child(SizedBox::empty().expand(), 35.0)
+                    .with_flex_child(
+                        Button::from_label(Label::new("Settings").with_text_size(TEXT_SIZE))
+                            .on_click(ConnectLayout::on_settings_clicked)
+                            .expand(),
+                        30.0,
+                    )
+                    .with_flex_child(SizedBox::empty().expand(), 35.0),
+                10.0,
+            )
+            .with_flex_child(SizedBox::empty().expand(), 10.0)
+    }
+    pub fn read_user_config(&mut self, config: &UserConfig) -> Result<(), String> {
+        self.username = config.username.clone();
+        self.server = config.server.clone();
+        self.port = config.server_port.to_string();
+        self.password = config.server_password.clone();
 
         Ok(())
     }
-    pub fn save_user_config(&self) -> Result<(), String> {
-        let config = UserConfig::new();
-        if let Err(msg) = config {
-            return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
-        }
-        let mut config = config.unwrap();
+    pub fn save_user_config(&self, data: &ApplicationState) -> Result<(), String> {
+        let mut config_guard = data.user_config.lock().unwrap();
 
-        config.username = self.username_string.clone();
-        config.server = self.servername_string.clone();
-        config.server_port = self.port_string.parse::<u16>().unwrap();
-        config.server_password = self.password_string.clone();
+        config_guard.username = self.username.clone();
+        config_guard.server = self.server.clone();
+        config_guard.server_port = self.port.parse::<u16>().unwrap();
+        config_guard.server_password = self.password.clone();
 
-        config.save()
+        config_guard.save()
     }
     pub fn is_data_filled(&mut self, push_to_talk_key: KeyCode) -> Result<ClientConfig, ()> {
-        if self.servername_string.chars().count() > 1
-            && self.username_string.chars().count() > 1
-            && self.port_string.chars().count() > 1
+        if self.server.chars().count() > 1
+            && self.username.chars().count() > 1
+            && self.port.chars().count() > 1
         {
             self.show_input_notice = false;
             Ok(ClientConfig {
-                username: self.username_string.clone(),
-                server_name: self.servername_string.clone(),
-                server_port: self.port_string.clone(),
-                server_password: self.password_string.clone(),
+                username: self.username.clone(),
+                server_name: self.server.clone(),
+                server_port: self.port.clone(),
+                server_password: self.password.clone(),
                 push_to_talk_key,
             })
         } else {
@@ -120,102 +213,7 @@ impl ConnectLayout {
         }
     }
     pub fn set_connect_result(&mut self, connect_result: ConnectResult) {
-        self.connect_result = connect_result;
-    }
-    pub fn view(&mut self, current_style: &StyleTheme) -> Element<MainMessage> {
-        let mut content = Column::new()
-            .align_items(Align::Center)
-            .push(Column::new().height(Length::FillPortion(10)))
-            .push(
-                Row::new()
-                    .spacing(5)
-                    .height(Length::FillPortion(30))
-                    .push(Column::new().width(Length::FillPortion(30)))
-                    .push(
-                        Column::new()
-                            .width(Length::FillPortion(15))
-                            .spacing(10)
-                            .padding(5)
-                            .push(Text::new("Username: ").color(Color::WHITE))
-                            .push(Text::new("Server: ").color(Color::WHITE))
-                            .push(Text::new("Port: ").color(Color::WHITE))
-                            .push(Text::new("Password: ").color(Color::WHITE)),
-                    )
-                    .push(
-                        Column::new()
-                            .width(Length::FillPortion(25))
-                            .spacing(10)
-                            .padding(5)
-                            .push(
-                                TextInput::new(
-                                    &mut self.username_input,
-                                    "Type your username...",
-                                    &self.username_string,
-                                    MainMessage::UsernameInputChanged,
-                                )
-                                .style(current_style.theme),
-                            )
-                            .push(
-                                TextInput::new(
-                                    &mut self.servername_input,
-                                    "IP or domain name...",
-                                    &self.servername_string,
-                                    MainMessage::ServernameInputChanged,
-                                )
-                                .style(current_style.theme),
-                            )
-                            .push(
-                                TextInput::new(
-                                    &mut self.port_input,
-                                    "",
-                                    &self.port_string,
-                                    MainMessage::PortInputChanged,
-                                )
-                                .style(current_style.theme),
-                            )
-                            .push(
-                                TextInput::new(
-                                    &mut self.password_input,
-                                    "(optional)",
-                                    &self.password_string,
-                                    MainMessage::PasswordInputChanged,
-                                )
-                                .style(current_style.theme),
-                            ),
-                    )
-                    .push(Column::new().width(Length::FillPortion(30))),
-            )
-            .push(Column::new().height(Length::FillPortion(5)))
-            .push(
-                Row::new()
-                    .height(Length::Shrink)
-                    .push(Column::new().width(Length::FillPortion(40)))
-                    .push(
-                        Button::new(
-                            &mut self.connect_button,
-                            Text::new("Connect").color(Color::WHITE),
-                        )
-                        .on_press(MainMessage::MessageFromConnectLayout(
-                            ConnectLayoutMessage::ConnectButtonPressed,
-                        ))
-                        .width(Length::FillPortion(20))
-                        .height(Length::Shrink)
-                        .style(current_style.theme),
-                    )
-                    .push(Column::new().width(Length::FillPortion(40))),
-            );
-
-        if self.show_input_notice {
-            content = content.push(
-                Text::new("Please fill all non-optional fields.")
-                    .color(Color::WHITE)
-                    .height(Length::FillPortion(10)),
-            )
-        } else {
-            content = content.push(Column::new().height(Length::FillPortion(10)));
-        }
-
-        let connect_text: String = match &self.connect_result {
+        self.connect_result = match connect_result {
             ConnectResult::IoErr(io_err) => match io_err {
                 IoResult::FIN => {
                     String::from("An IO error occurred, the server closed connection.")
@@ -226,41 +224,146 @@ impl ConnectLayout {
             ConnectResult::Err(msg) => format!("There was an error: {}", msg),
             _ => String::from(""),
         };
+    }
+    fn check_fields_length(data: &mut ApplicationState) -> Result<(), String> {
+        if data.connect_layout.username.chars().count() > MAX_USERNAME_SIZE {
+            return Err(format!(
+                "The username is too long ({} characters when the limit is {}.",
+                data.connect_layout.username.chars().count(),
+                MAX_USERNAME_SIZE
+            ));
+        }
 
-        content = content.push(
-            Row::new()
-                .push(Column::new().width(Length::FillPortion(20)))
-                .push(
-                    Text::new(connect_text)
-                        .color(Color::WHITE)
-                        .size(25)
-                        .width(Length::FillPortion(60))
-                        .horizontal_alignment(HorizontalAlignment::Center),
-                )
-                .push(Column::new().width(Length::FillPortion(20))),
+        if data.connect_layout.password.chars().count() > MAX_PASSWORD_SIZE {
+            return Err(format!(
+                "The password is too long ({} characters when the limit is {}.",
+                data.connect_layout.password.chars().count(),
+                MAX_PASSWORD_SIZE
+            ));
+        }
+
+        Ok(())
+    }
+    fn on_connect_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        if let Err(msg) = ConnectLayout::check_fields_length(data) {
+            data.connect_layout
+                .set_connect_result(ConnectResult::Err(msg));
+            return;
+        }
+
+        let config = data
+            .connect_layout
+            .is_data_filled(data.settings_layout.push_to_talk_keycode);
+        if config.is_err() {
+            return;
+        }
+        let config = config.unwrap();
+
+        let (tx, rx) = mpsc::channel();
+        let mut net_service_guard = data.network_service.lock().unwrap();
+
+        net_service_guard.init_audio_service(Arc::clone(&data.audio_service));
+
+        net_service_guard.start(
+            config,
+            data.connect_layout.username.clone(),
+            data.connect_layout.password.clone(),
+            tx,
+            ctx.get_external_handle(),
         );
 
-        content = content.push(Column::new().height(Length::FillPortion(10)));
+        loop {
+            let received = rx.recv();
+            if received.is_err() {
+                // start() already finished probably because of wrong password wait
+                break;
+            }
+            let received = received.unwrap();
 
-        content = content
-            .push(
-                Row::new()
-                    .height(Length::Shrink)
-                    .push(Column::new().width(Length::FillPortion(40)))
-                    .push(
-                        Button::new(
-                            &mut self.settings_button,
-                            Text::new("Settings").color(Color::WHITE),
-                        )
-                        .on_press(MainMessage::ToSettingsButtonPressed)
-                        .width(Length::FillPortion(20))
-                        .height(Length::Shrink)
-                        .style(current_style.theme),
-                    )
-                    .push(Column::new().width(Length::FillPortion(40))),
-            )
-            .push(Column::new().height(Length::FillPortion(10)));
+            match received {
+                ConnectResult::Ok => {
+                    data.connect_layout.set_connect_result(ConnectResult::Ok);
+                    if let Err(msg) = data.main_layout.add_user(
+                        data.connect_layout.username.clone(),
+                        String::from(""),
+                        0,
+                        true,
+                    ) {
+                        data.main_layout.add_system_message(format!(
+                            "{} at [{}, {}]",
+                            msg,
+                            file!(),
+                            line!()
+                        ));
+                    }
 
-        content.into()
+                    data.main_layout.current_user_name = data.connect_layout.username.clone();
+                    data.current_layout = Layout::Main;
+                    data.is_connected = true;
+                    data.main_layout.play_connect_sound();
+
+                    // Save config.
+                    if let Err(msg) = data.connect_layout.save_user_config(data) {
+                        data.main_layout.add_system_message(format!(
+                            "{} at [{}, {}]",
+                            msg,
+                            file!(),
+                            line!()
+                        ));
+                    }
+                    break;
+                }
+                ConnectResult::InfoAboutOtherUser(user_info, room, ping_ms) => {
+                    {
+                        let audio_guard = data.audio_service.lock().unwrap();
+
+                        let mut users_audio_data_guard =
+                            audio_guard.users_voice_data.lock().unwrap();
+
+                        users_audio_data_guard.push(Arc::new(Mutex::new(UserVoiceData::new(
+                            user_info.username.clone(),
+                        ))));
+                    }
+
+                    if let Err(msg) =
+                        data.main_layout
+                            .add_user(user_info.username, room, ping_ms, true)
+                    {
+                        data.main_layout.add_system_message(format!(
+                            "{} at [{}, {}]",
+                            msg,
+                            file!(),
+                            line!()
+                        ));
+                    }
+                }
+                ConnectResult::InfoAboutRoom(room_name) => {
+                    if data.main_layout.get_room_count() == 0 {
+                        data.main_layout.current_user_room = room_name.clone();
+                    }
+                    data.main_layout.add_room(room_name);
+                }
+                ConnectResult::SleepWithErr {
+                    message,
+                    sleep_in_sec,
+                } => {
+                    data.connect_layout
+                        .set_connect_result(ConnectResult::Err(message));
+
+                    net_service_guard.password_retry = PasswordRetrySleep {
+                        sleep: true,
+                        sleep_time_sec: sleep_in_sec,
+                        sleep_time_start: Local::now(),
+                    }
+                }
+                _ => {
+                    data.connect_layout.set_connect_result(received);
+                    break;
+                }
+            }
+        }
+    }
+    fn on_settings_clicked(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        data.current_layout = Layout::Settings;
     }
 }
