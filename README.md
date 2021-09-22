@@ -1,6 +1,6 @@
 # Silent
 <p align="center">
-  <img width="400" height="300" src="screenshot.png"/>
+  <img width="400" height="300" src="/screenshot.png"/>
 </p>
 Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server-rs) application.
 # Build
