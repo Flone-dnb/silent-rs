@@ -1,5 +1,7 @@
 # Silent
-![](screenshot.png?raw=true)
+<p align="center">
+  <img width="651" height="502" src="screenshot.png">
+</p>
 Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server-rs) application.
 # Build
 <h3> 1. Install dependencies </h3>
