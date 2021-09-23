@@ -1,8 +1,8 @@
 // External.
 use druid::widget::prelude::*;
 use druid::widget::{
-    Button, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment,
-    Padding, SizedBox, Slider, ViewSwitcher,
+    Button, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding,
+    SizedBox, Slider, ViewSwitcher,
 };
 use druid::{Color, Data, Lens, LensExt, Selector, Target, WidgetExt};
 use rdev::{listen, EventType};
@@ -181,8 +181,13 @@ impl SettingsLayout {
             data.current_layout = Layout::Connect;
         }
     }
-    fn on_show_message_notification_clicked(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env){
-        data.settings_layout.show_message_notification = !data.settings_layout.show_message_notification;
+    fn on_show_message_notification_clicked(
+        _ctx: &mut EventCtx,
+        data: &mut ApplicationState,
+        _env: &Env,
+    ) {
+        data.settings_layout.show_message_notification =
+            !data.settings_layout.show_message_notification;
 
         // Save to config.
         let mut config_guard = data.user_config.lock().unwrap();
@@ -287,13 +292,13 @@ impl SettingsLayout {
                 .with_default_spacer()
                 .with_child(
                     Flex::row()
-                        .with_child(Label::new("Show message notifications: ").with_text_size(TEXT_SIZE))
+                        .with_child(Label::new("Message notifications: ").with_text_size(TEXT_SIZE))
                         .with_child(
                             Button::from_label(
                                 Label::new(|data: &ApplicationState, _env: &Env| {
-                                    if data.settings_layout.show_message_notification{
+                                    if data.settings_layout.show_message_notification {
                                         String::from("show")
-                                    }else{
+                                    } else {
                                         String::from("don't show")
                                     }
                                 })
