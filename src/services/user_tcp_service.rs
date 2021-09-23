@@ -770,18 +770,6 @@ impl UserTcpService {
         let mut ver_str_buf = Vec::from(env!("CARGO_PKG_VERSION").as_bytes());
         let mut name_str_len_buf = u16::encode::<u16>(&name_str_len).unwrap();
         let mut name_str_buf = Vec::from(self.user_info.username.as_bytes());
-        // server password len
-        let server_pass_len = self.server_password.len() as u16;
-        let pass_str_len_buf = u16::encode::<u16>(&server_pass_len);
-        if let Err(e) = pass_str_len_buf {
-            return ConnectResult::Err(format!(
-                "u16::encode::<u16>() failed, error: {} at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            ));
-        }
-        let mut pass_str_len_buf = pass_str_len_buf.unwrap();
 
         // Move all buffers to one big buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
@@ -789,11 +777,42 @@ impl UserTcpService {
         out_buffer.append(&mut ver_str_buf);
         out_buffer.append(&mut name_str_len_buf);
         out_buffer.append(&mut name_str_buf);
-        out_buffer.append(&mut pass_str_len_buf);
+
+        // now password
         if !self.server_password.is_empty() {
-            // append password
-            let mut password_buf = Vec::from(self.server_password.as_bytes());
-            out_buffer.append(&mut password_buf);
+            // Encrypt password.
+            type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+            let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+            let mut encrypted_password = cipher.encrypt_vec(self.server_password.as_bytes());
+
+            // Prepare encrypted password len buffer.
+            let encrypted_password_len = encrypted_password.len() as u16;
+            let encrypted_password_len_buf = u16::encode::<u16>(&encrypted_password_len);
+            if let Err(e) = encrypted_password_len_buf {
+                return ConnectResult::Err(format!(
+                    "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                    encrypted_password_len,
+                    e,
+                    file!(),
+                    line!()
+                ));
+            }
+            let mut encrypted_password_len_buf = encrypted_password_len_buf.unwrap();
+            out_buffer.append(&mut encrypted_password_len_buf);
+            out_buffer.append(&mut encrypted_password);
+        } else {
+            let server_pass_len = 0;
+            let pass_str_len_buf = u16::encode::<u16>(&server_pass_len);
+            if let Err(e) = pass_str_len_buf {
+                return ConnectResult::Err(format!(
+                    "u16::encode::<u16>() failed, error: {} at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                ));
+            }
+            let mut pass_str_len_buf = pass_str_len_buf.unwrap();
+            out_buffer.append(&mut pass_str_len_buf);
         }
 
         // Send this buffer.
