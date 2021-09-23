@@ -346,17 +346,11 @@ impl UserUdpService {
         Ok(())
     }
     pub fn peek(&self, udp_socket: &UdpSocket, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        loop {
-            match udp_socket.peek(buf) {
-                Ok(n) => {
-                    return Ok(n);
-                }
-                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_UDP_MESSAGE_MS));
-                    continue;
-                }
-                Err(e) => return Err(e),
+        match udp_socket.peek(buf) {
+            Ok(n) => {
+                return Ok(n);
             }
+            Err(e) => return Err(e),
         }
     }
     pub fn recv(
