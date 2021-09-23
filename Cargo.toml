@@ -1,8 +1,13 @@
 [package]
 name = "silent"
 version = "2.0.0"
-authors = ["Aleksandr \"Flone\" Tretyakov (github.com/Flone-dnb)"]
+authors = ["Aleksandr \"Flone\" Tretyakov"]
 edition = "2018"
+license = "MIT"
+description = "Lightweight open-source voice chat client written in Rust."
+repository = "https://github.com/Flone-dnb/silent-rs"
+homepage = "https://github.com/Flone-dnb/silent-rs"
+readme = "README.md"
 
 [dependencies]
 druid = { git = "https://github.com/linebender/druid.git", features = ["im"] }
