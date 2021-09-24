@@ -194,6 +194,8 @@ impl MainLayout {
             return Err(format!("{} at [{}, {}]", msg, file!(), line!()));
         }
 
+        self.connected_count_text += 1;
+
         Ok(())
     }
     pub fn get_room_count(&self) -> usize {
@@ -243,6 +245,8 @@ impl MainLayout {
                         }
                     });
                 }
+
+                self.connected_count_text -= 1;
 
                 return Ok(());
             }
