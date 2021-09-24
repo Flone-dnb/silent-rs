@@ -86,7 +86,7 @@ impl MainLayout {
                 .with_flex_child(
                     Flex::column()
                         .must_fill_main_axis(true)
-                        .cross_axis_alignment(CrossAxisAlignment::Start)
+                        .cross_axis_alignment(CrossAxisAlignment::Center)
                         .with_flex_child(SizedBox::empty().expand(), 10.0)
                         .with_flex_child(
                             Label::new(|data: &ApplicationState, _env: &Env| {
