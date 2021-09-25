@@ -12,7 +12,7 @@ use std::sync::{mpsc, Arc, Mutex};
 
 // Custom.
 use crate::global_params::*;
-//use crate::misc::formatter_max_characters::*; // add formatter when #1975 is resolved
+use crate::misc::formatter_max_characters::*;
 use crate::services::audio_service::audio_service::UserVoiceData;
 use crate::services::config_service::*;
 use crate::services::net_service::*;
@@ -84,7 +84,8 @@ impl ConnectLayout {
                                 TextBox::new()
                                     .with_placeholder("Type your username...")
                                     .with_text_size(TEXT_SIZE)
-                                    //.with_formatter(MaxCharactersFormatter::new(MAX_USERNAME_SIZE))
+                                    .with_formatter(MaxCharactersFormatter::new(MAX_USERNAME_SIZE))
+                                    .update_data_while_editing(true)
                                     .lens(
                                         ApplicationState::connect_layout
                                             .then(ConnectLayout::username),
@@ -108,7 +109,8 @@ impl ConnectLayout {
                             .with_flex_child(
                                 TextBox::new()
                                     .with_text_size(TEXT_SIZE)
-                                    //.with_formatter(MaxCharactersFormatter::new(5))
+                                    .with_formatter(MaxCharactersFormatter::new(5))
+                                    .update_data_while_editing(true)
                                     .lens(
                                         ApplicationState::connect_layout.then(ConnectLayout::port),
                                     )
@@ -120,7 +122,8 @@ impl ConnectLayout {
                                 TextBox::new()
                                     .with_text_size(TEXT_SIZE)
                                     .with_placeholder("(optional)")
-                                    //.with_formatter(MaxCharactersFormatter::new(MAX_PASSWORD_SIZE))
+                                    .with_formatter(MaxCharactersFormatter::new(MAX_PASSWORD_SIZE))
+                                    .update_data_while_editing(true)
                                     .lens(
                                         ApplicationState::connect_layout
                                             .then(ConnectLayout::password),
