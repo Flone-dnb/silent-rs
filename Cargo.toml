@@ -1,6 +1,6 @@
 [package]
 name = "silent"
-version = "2.0.1"
+version = "2.0.2"
 authors = ["Aleksandr \"Flone\" Tretyakov"]
 edition = "2018"
 license = "MIT"
