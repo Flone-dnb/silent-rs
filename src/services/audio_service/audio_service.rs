@@ -20,8 +20,8 @@ use crate::services::net_service::*;
 
 const INTERVAL_PROCESS_VOICE_MS: i32 = 10;
 const INTERVAL_WAIT_FOR_NEW_CHUNKS: u64 = 10;
-const SAMPLES_IN_CHUNK: usize = 679; // 35 ms (= 'sampleRate' (19400) * 0.035)
-const SAMPLE_RATE: u32 = 19400;
+const SAMPLES_IN_CHUNK: usize = 679; // ~20 ms with 34000 sample rate
+const SAMPLE_RATE: u32 = 34000;
 const MIN_CHUNKS_TO_RECORD: usize = 6;
 const MIN_CHUNKS_TO_START_PLAY: usize = 3;
 const INTERVAL_CHECK_PUSH_TO_TALK_MS: u64 = 5;
