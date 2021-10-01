@@ -1,6 +1,7 @@
 #![feature(linked_list_remove)]
 // On Windows platform, don't show a console when opening the app.
 #![windows_subsystem = "windows"]
+use druid::WindowHandle;
 // External
 use druid::widget::prelude::*;
 use druid::widget::ViewSwitcher;
@@ -55,6 +56,8 @@ pub struct ApplicationState {
     settings_layout: SettingsLayout,
     main_layout: MainLayout,
 
+    window_handle: Arc<Option<WindowHandle>>,
+
     is_connected: bool,
 
     theme: ApplicationTheme,
@@ -101,6 +104,7 @@ pub fn main() {
         audio_service: Arc::new(Mutex::new(AudioService::default())),
         network_service: Arc::new(Mutex::new(NetService::new())),
         user_config: Arc::new(Mutex::new(config.unwrap())),
+        window_handle: Arc::new(None),
     };
 
     init_app(&mut initial_state);
@@ -259,6 +263,18 @@ impl AppDelegate<ApplicationState> for Delegate {
             data.main_layout.clear_all_users();
             Handled::Yes
         } else if let Some(user_message_info) = cmd.get(USER_TCP_SERVICE_USER_MESSAGE) {
+            // TODO: when #1997 is resolved implement:
+            // 1. show notifications only when the window is minimized,
+            // 2. if there are unread messages (while minimized) show notification about them every minute.
+            let todo_notifications_variable = 42;
+            println!(
+                "{:?}",
+                data.window_handle
+                    .as_ref()
+                    .as_ref()
+                    .unwrap()
+                    .get_window_state()
+            );
             data.main_layout.add_message(
                 user_message_info.message.clone(),
                 user_message_info.username.clone(),
@@ -332,10 +348,15 @@ fn apply_theme(env: &mut Env, data: &ApplicationState) {
 fn build_root_widget() -> impl Widget<ApplicationState> {
     ViewSwitcher::new(
         |data: &ApplicationState, _env| data.current_layout,
-        |selector, _data, _env| match *selector {
+        |selector, data, _env| match *selector {
             Layout::Connect => Box::new(ConnectLayout::build_ui()),
             Layout::Settings => Box::new(SettingsLayout::build_ui()),
-            Layout::Main => Box::new(MainLayout::build_ui()),
+            Layout::Main => {
+                if data.window_handle.as_ref().is_none() {
+                    panic!("No window handle set!");
+                }
+                Box::new(MainLayout::build_ui())
+            }
         },
     )
 }

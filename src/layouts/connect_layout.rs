@@ -248,6 +248,8 @@ impl ConnectLayout {
         Ok(())
     }
     fn on_connect_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        data.window_handle = Arc::new(Some(ctx.window().clone()));
+
         if let Err(msg) = ConnectLayout::check_fields_length(data) {
             data.connect_layout
                 .set_connect_result(ConnectResult::Err(msg));
