@@ -130,12 +130,12 @@ impl MainLayout {
         }
 
         if found == false {
-            self.add_system_message(format!(
-                "Warning: can't find user {}, at [{}:{}]",
+            println!(
+                "SILENT_WARNING: can't find user {} to set_user_talking, at [{}:{}]",
                 username,
                 file!(),
                 line!()
-            ));
+            );
         }
     }
     pub fn play_connect_sound(&self) {

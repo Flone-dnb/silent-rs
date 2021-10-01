@@ -189,11 +189,9 @@ impl AppDelegate<ApplicationState> for Delegate {
                 .set_user_ping(&ping_data.username, ping_data.ping_ms)
             {
                 if ping_data.try_again_count == 0 {
-                    data.main_layout.add_system_message(format!(
-                                    "Ping of user '{}' was received but no info about the user was received (ping of unknown user) [failed after {} attempts to wait for user info].",
+                    println!("SILENT_WARNING: Ping of user '{}' was received but no info about the user was received (ping of unknown user) [failed after {} attempts to wait for user info].",
                                     &ping_data.username,
-                                    USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT
-                                ));
+                                    USER_CONNECT_FIRST_UDP_PING_RETRY_MAX_COUNT);
                 } else {
                     data.network_service
                         .lock()
