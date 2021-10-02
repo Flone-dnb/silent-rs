@@ -26,9 +26,10 @@ pub const NETWORK_SERVICE_UPDATE_CONNECTED_USERS_COUNT: Selector<usize> =
 pub const NETWORK_SERVICE_CLEAR_ALL_USERS: Selector<()> =
     Selector::new("network_service_clear_all_users");
 
-pub struct ActionError {
-    pub message: String,
-    //pub show_modal_window: bool,
+pub enum ActionError {
+    ChangeRoomsTooQuick,
+    SendMessagesTooQuick,
+    SystemError(String),
 }
 
 pub struct ClientConfig {
@@ -135,25 +136,29 @@ impl NetService {
     pub fn enter_room(&mut self, room: &str) -> Result<(), ActionError> {
         let time_diff = Local::now() - self.last_time_entered_room;
         if time_diff.num_seconds() < SPAM_PROTECTION_SEC as i64 {
-            return Err(ActionError {
-                message: String::from("You can't change rooms that quickly!"),
-            });
+            return Err(ActionError::ChangeRoomsTooQuick);
         }
 
         match self.user_tcp_service.lock().unwrap().enter_room(room) {
             HandleMessageResult::Ok => {}
             HandleMessageResult::IOError(err) => match err {
                 IoResult::Err(msg) => {
-                    return Err(ActionError {
-                        message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                    });
+                    return Err(ActionError::SystemError(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
                 }
                 _ => {}
             },
             HandleMessageResult::OtherErr(msg) => {
-                return Err(ActionError {
-                    message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                });
+                return Err(ActionError::SystemError(format!(
+                    "{} at [{}, {}]",
+                    msg,
+                    file!(),
+                    line!()
+                )));
             }
         }
 
@@ -164,9 +169,7 @@ impl NetService {
     pub fn send_user_message(&mut self, message: String) -> Result<(), ActionError> {
         let time_diff = Local::now() - self.last_time_text_message_sent;
         if time_diff.num_seconds() < SPAM_PROTECTION_SEC as i64 {
-            return Err(ActionError {
-                message: String::from("You can't send messages that quick!"),
-            });
+            return Err(ActionError::SendMessagesTooQuick);
         }
 
         match self
@@ -178,16 +181,22 @@ impl NetService {
             HandleMessageResult::Ok => {}
             HandleMessageResult::IOError(err) => match err {
                 IoResult::Err(msg) => {
-                    return Err(ActionError {
-                        message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                    });
+                    return Err(ActionError::SystemError(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
                 }
                 _ => {}
             },
             HandleMessageResult::OtherErr(msg) => {
-                return Err(ActionError {
-                    message: format!("{} at [{}, {}]", msg, file!(), line!()),
-                });
+                return Err(ActionError::SystemError(format!(
+                    "{} at [{}, {}]",
+                    msg,
+                    file!(),
+                    line!()
+                )));
             }
         }
 

@@ -20,3 +20,22 @@ SETTINGS_LAYOUT_ABOUT_SECTION_APP_SOURCE_CODE_TEXT,The source code is available,
 SETTINGS_LAYOUT_ABOUT_SECTION_APP_SOURCE_CODE_BUTTON_TEXT,here,здесь
 SETTINGS_LAYOUT_ABOUT_SECTION_DRUID_TEXT,The UI is powered by the Druid (data-oriented Rust UI design toolkit).,Пользовательский интерфейс создан с помощью Druid (data-oriented Rust UI design toolkit).
 SETTINGS_LAYOUT_BACK_BUTTON_TEXT,Back,Вернуться
+MAIN_LAYOUT_SETTINGS_BUTTON_TEXT,settings,настройки
+MAIN_LAYOUT_TEXT_CHAT_TITLE_TEXT,Text Chat,Текстовый чат
+MAIN_LAYOUT_CONNECTED_TITLE_TEXT,Connected,Подключено
+MAIN_LAYOUT_USER_INFO_PING_TEXT,Ping,Пинг
+MAIN_LAYOUT_USER_INFO_PING_TIME_TEXT,ms,мс
+MAIN_LAYOUT_USER_INFO_CONNECTED_TEXT,Connected,Подключен
+MAIN_LAYOUT_USER_INFO_CONNECTED_JUST_NOW_TEXT,just now,только что
+MAIN_LAYOUT_USER_INFO_CONNECTED_MIN_TEXT,min. ago,мин. назад
+MAIN_LAYOUT_USER_INFO_CONNECTED_HOUR_TEXT,h. ago,ч. назад
+MAIN_LAYOUT_USER_INFO_USER_VOLUME_TEXT,User volume,Громкость пользователя
+MAIN_LAYOUT_USER_INFO_USER_VOLUME_NOTE_TEXT,this parameter will be reset after the restart,этот параметр будет сброшен после перезапуска программы
+MAIN_LAYOUT_USER_INFO_BACK_BUTTON_TEXT,Back,Вернуться
+MAIN_LAYOUT_MESSAGE_USER_CONNECTED_TEXT,just connected to the chat,только что подключился к чату
+MAIN_LAYOUT_MESSAGE_USER_DISCONNECTED_TEXT,disconnected from the chat,отключился от чата
+MAIN_LAYOUT_MESSAGE_CHANGE_ROOMS_TOO_QUICK_TEXT,You can't change rooms that quickly!,Вы не можете переключаться между комнатами так быстро!
+MAIN_LAYOUT_MESSAGE_SEND_MESSAGES_TOO_QUICK_TEXT,You can't send messages that quick!,Вы не можете отправлять сообщения так часто!
+MAIN_LAYOUT_MESSAGE_SYSTEM_ERROR_TEXT,An error occurred,Произошла ошибка
+MAIN_LAYOUT_MESSAGE_AUTHOR_SYSTEM_TEXT,SYSTEM,СИСТЕМА
+MAIN_LAYOUT_MESSAGE_AUTHOR_INFO_TEXT,INFO,ИНФО

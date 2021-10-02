@@ -7,7 +7,7 @@ use chrono::prelude::*;
 use super::connected_list::UserItemData;
 use crate::global_params::*;
 use crate::layouts::main_layout::*;
-use crate::misc::custom_slider_controller::*;
+use crate::misc::{custom_slider_controller::*, locale_keys::*};
 use crate::widgets::connected_list::*;
 use crate::ApplicationState;
 use crate::CustomSliderID;
@@ -43,12 +43,18 @@ impl UserInfo {
             .with_child(
                 Label::new(|data: &ApplicationState, _env: &Env| {
                     format!(
-                        "ping: {} ms",
+                        "{}: {} {}.",
+                        data.localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_PING_TEXT)
+                            .unwrap(),
                         data.main_layout
                             .connected_list
                             .user_info_layout
                             .user_data
-                            .ping_ms
+                            .ping_ms,
+                        data.localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_PING_TIME_TEXT)
+                            .unwrap()
                     )
                 })
                 .with_text_size(TEXT_SIZE),
@@ -65,14 +71,38 @@ impl UserInfo {
                             .connected_time_point);
                     let mut _time_since_connected = String::new();
                     if time_diff.num_minutes() == 0 {
-                        _time_since_connected = String::from("just now.");
+                        _time_since_connected = data
+                            .localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_CONNECTED_JUST_NOW_TEXT)
+                            .unwrap()
+                            .clone();
                     } else if time_diff.num_hours() == 0 {
-                        _time_since_connected = format!("{} min. ago.", time_diff.num_minutes());
+                        _time_since_connected = format!(
+                            "{} {}",
+                            time_diff.num_minutes(),
+                            data.localization
+                                .get(LOCALE_MAIN_LAYOUT_USER_INFO_CONNECTED_MIN_TEXT)
+                                .unwrap()
+                                .clone()
+                        );
                     } else {
-                        _time_since_connected = format!("{} h. ago.", time_diff.num_hours());
+                        _time_since_connected = format!(
+                            "{} {}",
+                            time_diff.num_hours(),
+                            data.localization
+                                .get(LOCALE_MAIN_LAYOUT_USER_INFO_CONNECTED_HOUR_TEXT)
+                                .unwrap()
+                                .clone()
+                        );
                     }
 
-                    format!("connected: {}", _time_since_connected)
+                    format!(
+                        "{} {}.",
+                        data.localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_CONNECTED_TEXT)
+                            .unwrap(),
+                        _time_since_connected
+                    )
                 })
                 .with_text_size(TEXT_SIZE),
             )
@@ -80,7 +110,10 @@ impl UserInfo {
             .with_child(
                 Label::new(|data: &ApplicationState, _env: &Env| {
                     format!(
-                        "user volume: {:.0} %",
+                        "{}: {:.0} %",
+                        data.localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_USER_VOLUME_TEXT)
+                            .unwrap(),
                         data.main_layout
                             .connected_list
                             .user_info_layout
@@ -91,10 +124,17 @@ impl UserInfo {
                 .with_text_size(TEXT_SIZE),
             )
             .with_child(
-                Label::new("[this parameter will be reset after the restart]")
-                    .with_line_break_mode(LineBreaking::WordWrap)
-                    .with_text_color(Color::GRAY)
-                    .with_text_size(TEXT_SIZE),
+                Label::new(|data: &ApplicationState, _env: &Env| {
+                    format!(
+                        "[{}]",
+                        data.localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_USER_VOLUME_NOTE_TEXT)
+                            .unwrap()
+                    )
+                })
+                .with_line_break_mode(LineBreaking::WordWrap)
+                .with_text_color(Color::GRAY)
+                .with_text_size(TEXT_SIZE),
             )
             .with_child(
                 Slider::new()
@@ -114,8 +154,16 @@ impl UserInfo {
                     ),
             )
             .with_child(
-                Button::from_label(Label::new("Back").with_text_size(TEXT_SIZE))
-                    .on_click(UserInfo::on_back_clicked),
+                Button::from_label(
+                    Label::new(|data: &ApplicationState, _env: &Env| {
+                        data.localization
+                            .get(LOCALE_MAIN_LAYOUT_USER_INFO_BACK_BUTTON_TEXT)
+                            .unwrap()
+                            .clone()
+                    })
+                    .with_text_size(TEXT_SIZE),
+                )
+                .on_click(UserInfo::on_back_clicked),
             )
     }
     fn on_back_clicked(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {

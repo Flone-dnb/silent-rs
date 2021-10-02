@@ -14,6 +14,7 @@ use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
+use crate::misc::locale_keys::*;
 use crate::ApplicationState;
 
 #[derive(Clone, Data, Lens)]
@@ -45,7 +46,7 @@ impl ChatList {
 
         let messages_guard = data.main_layout.chat_list.messages.lock().unwrap();
         for message in messages_guard.iter() {
-            content.add_child(message.get_ui())
+            content.add_child(message.get_ui(data))
         }
 
         Scroll::new(content).vertical()
@@ -173,13 +174,23 @@ impl ChatMessage {
             message_type,
         }
     }
-    pub fn get_ui(&self) -> impl Widget<ApplicationState> {
+    pub fn get_ui(&self, data: &ApplicationState) -> impl Widget<ApplicationState> {
         let mut _author: &str = &self.author;
 
         match self.message_type {
             MessageType::UserMessage => _author = &self.author,
-            MessageType::SystemMessage => _author = "SYSTEM",
-            MessageType::InfoMessage => _author = "INFO",
+            MessageType::SystemMessage => {
+                _author = data
+                    .localization
+                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_AUTHOR_SYSTEM_TEXT)
+                    .unwrap()
+            }
+            MessageType::InfoMessage => {
+                _author = data
+                    .localization
+                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_AUTHOR_INFO_TEXT)
+                    .unwrap()
+            }
         }
 
         let mut message_column: Flex<ApplicationState> =

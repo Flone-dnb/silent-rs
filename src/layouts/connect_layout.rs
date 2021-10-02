@@ -343,6 +343,7 @@ impl ConnectLayout {
                         String::from(""),
                         0,
                         true,
+                        &data.localization,
                     ) {
                         data.main_layout.add_system_message(format!(
                             "{} at [{}, {}]",
@@ -380,10 +381,13 @@ impl ConnectLayout {
                         ))));
                     }
 
-                    if let Err(msg) =
-                        data.main_layout
-                            .add_user(user_info.username, room, ping_ms, true)
-                    {
+                    if let Err(msg) = data.main_layout.add_user(
+                        user_info.username,
+                        room,
+                        ping_ms,
+                        true,
+                        &data.localization,
+                    ) {
                         data.main_layout.add_system_message(format!(
                             "{} at [{}, {}]",
                             msg,

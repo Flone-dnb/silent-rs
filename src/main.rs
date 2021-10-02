@@ -290,10 +290,13 @@ impl AppDelegate<ApplicationState> for Delegate {
                 users_audio_data_guard
                     .push(Arc::new(Mutex::new(UserVoiceData::new(username.clone()))));
             }
-            if let Err(msg) =
-                data.main_layout
-                    .add_user(username.clone(), String::from(""), 0, false)
-            {
+            if let Err(msg) = data.main_layout.add_user(
+                username.clone(),
+                String::from(""),
+                0,
+                false,
+                &data.localization,
+            ) {
                 data.main_layout.add_system_message(format!(
                     "{} at [{}, {}]",
                     msg,
@@ -332,7 +335,7 @@ impl AppDelegate<ApplicationState> for Delegate {
                 }
             }
 
-            if let Err(msg) = data.main_layout.remove_user(username) {
+            if let Err(msg) = data.main_layout.remove_user(username, &data.localization) {
                 data.main_layout.add_system_message(msg);
             }
             Handled::Yes

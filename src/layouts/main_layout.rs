@@ -10,10 +10,12 @@ use sfml::audio::{Sound, SoundBuffer, SoundStatus};
 use std::thread;
 use std::time::Duration;
 
-use crate::misc::custom_data_button_controller::CustomButtonData;
 // Custom.
-use crate::misc::custom_text_box_controller::*;
 use crate::misc::formatter_max_characters::*; // add formatter when #1975 is resolved
+use crate::misc::{
+    custom_data_button_controller::CustomButtonData, custom_text_box_controller::*, locale_keys::*,
+};
+use crate::services::net_service::ActionError;
 use crate::theme::BACKGROUND_SPECIAL_COLOR;
 use crate::widgets::chat_list::*;
 use crate::widgets::connected_list::*;
@@ -53,14 +55,29 @@ impl MainLayout {
                             Flex::row()
                                 .with_child(
                                     Button::from_label(
-                                        Label::new("settings").with_text_size(TEXT_SIZE),
+                                        Label::new(|data: &ApplicationState, _env: &Env| {
+                                            data.localization
+                                                .get(LOCALE_MAIN_LAYOUT_SETTINGS_BUTTON_TEXT)
+                                                .unwrap()
+                                                .clone()
+                                        })
+                                        .with_text_size(TEXT_SIZE),
                                     )
                                     .on_click(MainLayout::on_settings_clicked),
                                 )
                                 .expand(),
                             10.0,
                         )
-                        .with_flex_child(Label::new("Text Chat").with_text_size(TEXT_SIZE), 10.0)
+                        .with_flex_child(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                data.localization
+                                    .get(LOCALE_MAIN_LAYOUT_TEXT_CHAT_TITLE_TEXT)
+                                    .unwrap()
+                                    .clone()
+                            })
+                            .with_text_size(TEXT_SIZE),
+                            10.0,
+                        )
                         .with_default_spacer()
                         .with_flex_child(
                             Container::new(ChatList::build_ui())
@@ -72,7 +89,6 @@ impl MainLayout {
                         .with_default_spacer()
                         .with_flex_child(
                             TextBox::multiline()
-                                .with_placeholder("Type your message here...")
                                 .with_text_size(TEXT_SIZE)
                                 //.with_formatter(MaxCharactersFormatter::new(MAX_MESSAGE_SIZE))
                                 .controller(CustomTextBoxController::new())
@@ -90,7 +106,13 @@ impl MainLayout {
                         .with_flex_child(SizedBox::empty().expand(), 10.0)
                         .with_flex_child(
                             Label::new(|data: &ApplicationState, _env: &Env| {
-                                format!("Connected: {}", data.main_layout.connected_count_text)
+                                format!(
+                                    "{}: {}",
+                                    data.localization
+                                        .get(LOCALE_MAIN_LAYOUT_CONNECTED_TITLE_TEXT)
+                                        .unwrap(),
+                                    data.main_layout.connected_count_text
+                                )
                             })
                             .with_text_size(TEXT_SIZE),
                             10.0,
@@ -172,10 +194,16 @@ impl MainLayout {
         room: String,
         ping_ms: u16,
         dont_show_notice: bool,
+        localization: &std::sync::Arc<std::collections::HashMap<String, String>>,
     ) -> Result<(), String> {
         if !dont_show_notice {
-            self.chat_list
-                .add_info_message(format!("{} just connected to the chat.", &username));
+            self.chat_list.add_info_message(format!(
+                "{} {}.",
+                &username,
+                localization
+                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_USER_CONNECTED_TEXT)
+                    .unwrap()
+            ));
 
             if self.current_user_room == DEFAULT_ROOM_NAME {
                 thread::spawn(move || {
@@ -224,7 +252,11 @@ impl MainLayout {
             Ok(())
         }
     }
-    pub fn remove_user(&mut self, username: &str) -> Result<(), String> {
+    pub fn remove_user(
+        &mut self,
+        username: &str,
+        localization: &std::sync::Arc<std::collections::HashMap<String, String>>,
+    ) -> Result<(), String> {
         let mut removed_user_room = String::new();
         match self
             .connected_list
@@ -232,8 +264,13 @@ impl MainLayout {
         {
             Err(msg) => return Err(format!("{} at [{}, {}]", msg, file!(), line!())),
             Ok(()) => {
-                self.chat_list
-                    .add_info_message(format!("{} disconnected from the chat.", username));
+                self.chat_list.add_info_message(format!(
+                    "{} {}.",
+                    username,
+                    localization
+                        .get(LOCALE_MAIN_LAYOUT_MESSAGE_USER_DISCONNECTED_TEXT)
+                        .unwrap()
+                ));
 
                 if self.current_user_room == removed_user_room {
                     thread::spawn(move || {
@@ -303,13 +340,39 @@ impl MainLayout {
                 return;
             }
 
-            if let Err(msg) = data
+            if let Err(err) = data
                 .network_service
                 .lock()
                 .unwrap()
                 .send_user_message(data.main_layout.get_message_input())
             {
-                data.main_layout.add_system_message(msg.message);
+                match err {
+                    ActionError::SystemError(msg) => {
+                        data.main_layout.add_system_message(format!(
+                            "{}: {}",
+                            data.localization
+                                .get(LOCALE_MAIN_LAYOUT_MESSAGE_SYSTEM_ERROR_TEXT)
+                                .unwrap(),
+                            msg
+                        ));
+                    }
+                    ActionError::ChangeRoomsTooQuick => {
+                        data.main_layout.add_system_message(
+                            data.localization
+                                .get(LOCALE_MAIN_LAYOUT_MESSAGE_CHANGE_ROOMS_TOO_QUICK_TEXT)
+                                .unwrap()
+                                .clone(),
+                        );
+                    }
+                    ActionError::SendMessagesTooQuick => {
+                        data.main_layout.add_system_message(
+                            data.localization
+                                .get(LOCALE_MAIN_LAYOUT_MESSAGE_SEND_MESSAGES_TOO_QUICK_TEXT)
+                                .unwrap()
+                                .clone(),
+                        );
+                    }
+                };
             } else {
                 data.main_layout.clear_message_input();
             }
@@ -321,13 +384,39 @@ impl MainLayout {
     ) {
         if button_info.is_room {
             if data.main_layout.current_user_room != button_info.button_name {
-                if let Err(msg) = data
+                if let Err(err) = data
                     .network_service
                     .lock()
                     .unwrap()
                     .enter_room(&button_info.button_name)
                 {
-                    data.main_layout.add_system_message(msg.message);
+                    match err {
+                        ActionError::SystemError(msg) => {
+                            data.main_layout.add_system_message(format!(
+                                "{}: {}",
+                                data.localization
+                                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_SYSTEM_ERROR_TEXT)
+                                    .unwrap(),
+                                msg
+                            ));
+                        }
+                        ActionError::ChangeRoomsTooQuick => {
+                            data.main_layout.add_system_message(
+                                data.localization
+                                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_CHANGE_ROOMS_TOO_QUICK_TEXT)
+                                    .unwrap()
+                                    .clone(),
+                            );
+                        }
+                        ActionError::SendMessagesTooQuick => {
+                            data.main_layout.add_system_message(
+                                data.localization
+                                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_SEND_MESSAGES_TOO_QUICK_TEXT)
+                                    .unwrap()
+                                    .clone(),
+                            );
+                        }
+                    };
                 }
             }
         } else {

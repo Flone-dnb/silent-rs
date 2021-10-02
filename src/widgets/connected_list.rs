@@ -17,7 +17,7 @@ use std::time::Duration;
 // Custom.
 use super::user_info::UserInfo;
 use crate::global_params::*;
-use crate::misc::custom_data_button_controller::*;
+use crate::misc::{custom_data_button_controller::*, locale_keys::*};
 use crate::ApplicationState;
 
 #[derive(Clone, Data, Lens)]
@@ -369,11 +369,20 @@ impl UserItem {
         ));
 
         // add user ping
+        let user_ping = self.user_data.ping_ms;
         row.add_child(
-            Label::new(format!(" {} ms", self.user_data.ping_ms))
-                .with_text_size(MESSAGE_AUTHOR_TEXT_SIZE)
-                .with_text_color(Color::GRAY)
-                .with_text_alignment(TextAlignment::End),
+            Label::new(move |data: &ApplicationState, _env: &Env| {
+                format!(
+                    "{} {}",
+                    user_ping,
+                    data.localization
+                        .get(LOCALE_MAIN_LAYOUT_USER_INFO_PING_TIME_TEXT)
+                        .unwrap()
+                )
+            })
+            .with_text_size(MESSAGE_AUTHOR_TEXT_SIZE)
+            .with_text_color(Color::GRAY)
+            .with_text_alignment(TextAlignment::End),
         );
 
         row
