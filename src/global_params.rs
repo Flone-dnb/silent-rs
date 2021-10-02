@@ -34,3 +34,5 @@ pub const CONNECTED_SOUND_PATH: &str = "res/sounds/connect.wav";
 pub const DISCONNECT_SOUND_PATH: &str = "res/sounds/disconnect.wav";
 pub const PUSH_TO_TALK_PRESS_SOUND: &str = "res/sounds/press.wav";
 pub const PUSH_TO_TALK_UNPRESS_SOUND: &str = "res/sounds/unpress.wav";
+
+pub const LOCALIZATION_FILE_PATH: &str = "res/localization.csv";

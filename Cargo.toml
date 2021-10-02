@@ -25,6 +25,7 @@ block-modes = "0.8.1"
 rand = "0.8.3"
 num-bigint = "0.4.2"
 notify-rust = "4.5.3"
+csv = "1.1.6"
 
 [target.'cfg(windows)'.dependencies]
 platform-dirs = "0.3.0"

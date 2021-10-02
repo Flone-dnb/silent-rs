@@ -3,6 +3,7 @@
 #![windows_subsystem = "windows"]
 use druid::WindowHandle;
 // External
+use csv::Reader;
 use druid::widget::prelude::*;
 use druid::widget::ViewSwitcher;
 use druid::Lens;
@@ -13,6 +14,7 @@ use rdev::display_size;
 use system_wide_key_state::*;
 
 // Std
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 // Custom.
@@ -61,6 +63,7 @@ pub struct ApplicationState {
     is_connected: bool,
 
     theme: ApplicationTheme,
+    localization: Arc<HashMap<String, String>>,
 
     #[data(ignore)]
     audio_service: Arc<Mutex<AudioService>>,
@@ -105,9 +108,11 @@ pub fn main() {
         network_service: Arc::new(Mutex::new(NetService::new())),
         user_config: Arc::new(Mutex::new(config.unwrap())),
         window_handle: Arc::new(None),
+        localization: Arc::new(HashMap::new()),
     };
 
-    init_app(&mut initial_state);
+    apply_config(&mut initial_state);
+    read_localization("ru", &mut initial_state);
 
     // start the application. Here we pass in the application state.
     AppLauncher::with_window(main_window)
@@ -118,7 +123,7 @@ pub fn main() {
         .expect("Failed to launch the application.");
 }
 
-fn init_app(data: &mut ApplicationState) {
+fn apply_config(data: &mut ApplicationState) {
     let config_guard = data.user_config.lock().unwrap();
 
     // Fill connect fields from config.
@@ -143,6 +148,69 @@ fn init_app(data: &mut ApplicationState) {
         Arc::clone(&data.network_service),
         config_guard.master_volume as i32,
     );
+}
+
+fn read_localization(needed_locale: &str, data: &mut ApplicationState) {
+    // setup localization
+    let locale_reader = Reader::from_path(LOCALIZATION_FILE_PATH);
+    if let Err(e) = locale_reader {
+        panic!(
+            "Can't create locale reader from path \"{}\", error: {}",
+            LOCALIZATION_FILE_PATH, e
+        );
+    }
+
+    let mut locale_reader = locale_reader.unwrap();
+
+    let headers = locale_reader.headers();
+    if let Err(e) = headers {
+        panic!(
+            "Error occurred while reading \"{}\" headers, error: {}",
+            LOCALIZATION_FILE_PATH, e
+        );
+    }
+    let headers = headers.unwrap();
+
+    // find needed locale
+    let mut needed_locale_index: i32 = -1;
+    for (i, locale) in headers.iter().enumerate() {
+        if locale == needed_locale {
+            needed_locale_index = i as i32;
+            break;
+        }
+    }
+    if needed_locale_index == -1 {
+        panic!(
+            "Error occurred while reading \"{}\" records, error: needed locale not found.",
+            LOCALIZATION_FILE_PATH
+        );
+    }
+
+    let mut localization: HashMap<String, String> = HashMap::new();
+
+    for result in locale_reader.records() {
+        if let Err(e) = result {
+            panic!(
+                "Error occurred while reading \"{}\" records, error: {}",
+                LOCALIZATION_FILE_PATH, e
+            );
+        }
+
+        let record = result.unwrap();
+        if localization.insert(
+            String::from(record.get(0).unwrap()),
+            String::from(record.get(needed_locale_index as usize).unwrap()),
+        ) != None
+        {
+            panic!(
+                "Non-unique key found while reading \"{}\" records, key: {}",
+                LOCALIZATION_FILE_PATH,
+                record.get(0).unwrap()
+            );
+        }
+    }
+
+    data.localization = Arc::new(localization);
 }
 
 struct Delegate;
