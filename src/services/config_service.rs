@@ -23,6 +23,7 @@ pub struct UserConfig {
     pub master_volume: u16,
     pub push_to_talk_button: KeyCode,
     pub show_message_notification: bool,
+    pub locale: String,
 }
 
 impl UserConfig {
@@ -230,6 +231,24 @@ impl UserConfig {
             ));
         }
 
+        // Write locale
+        let mut locale_vec = self.locale.as_bytes();
+        if locale_vec.len() != 2 {
+            println!(
+                "SILENT_WARNING: locale string length is not 2, locale: {}, using 'en' locale instead.",
+                &self.locale
+            );
+            locale_vec = "en".as_bytes();
+        }
+        if let Err(e) = config_file.write(&mut locale_vec) {
+            return Err(format!(
+                "File::read() failed, error: can't write locale (error: {}) at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            ));
+        }
+
         // new settings go here...
         //
         // also update CONFIG_FILE_VERSION if new options are added
@@ -266,6 +285,9 @@ impl UserConfig {
     }
 
     fn empty() -> UserConfig {
+        let locale =
+            String::from(&sys_locale::get_locale().unwrap_or_else(|| String::from("en"))[..2]);
+
         UserConfig {
             username: String::from(""),
             server: String::from(""),
@@ -275,6 +297,7 @@ impl UserConfig {
             master_volume: 100,
             push_to_talk_button: KeyCode::KT,
             show_message_notification: true,
+            locale,
         }
     }
 
@@ -471,6 +494,9 @@ impl UserConfig {
                 return Ok(user_config);
             }
 
+            // Config file version #1 below...
+
+            // Read 'show message notification'.
             let mut buf = vec![0u8; std::mem::size_of::<bool>()];
             if let Err(e) = config_file.read(&mut buf) {
                 return Err(format!(
@@ -485,6 +511,24 @@ impl UserConfig {
             } else {
                 user_config.show_message_notification = false;
             }
+
+            if config_version == 1 {
+                return Ok(user_config);
+            }
+
+            // Config file version #2 below...
+
+            // Read locale
+            let mut buf = vec![0u8; 2];
+            if let Err(e) = config_file.read(&mut buf) {
+                return Err(format!(
+                    "File::read() failed, error: can't read locale (error: {}) at [{}, {}]",
+                    e,
+                    file!(),
+                    line!()
+                ));
+            }
+            user_config.locale = String::from_utf8(buf).unwrap();
 
             //
             // please use 'config_version' variable to handle old config versions...

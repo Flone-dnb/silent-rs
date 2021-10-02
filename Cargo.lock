@@ -482,6 +482,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cstr_core"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "917ba9efe9e1e736671d5a03f006afc4e7e3f32503e2077e0bcaf519c0c8c1d3"
+dependencies = [
+ "cty",
+ "memchr",
+]
+
+[[package]]
 name = "csv"
 version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -502,6 +512,12 @@ checksum = "2b2466559f260f48ad25fe6317b3c8dac77b5bdb5763ac7d9d6103530663bc90"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "cty"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7313c0d620d0cb4dbd9d019e461a4beb501071ff46ec0ab933efb4daa76d73e3"
 
 [[package]]
 name = "derivative"
@@ -1950,6 +1966,7 @@ dependencies = [
  "rand",
  "rdev",
  "sfml",
+ "sys-locale",
  "system_wide_key_state",
  "users",
 ]
@@ -2119,6 +2136,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a393066ed9010ebaed60b9eafa373d4b1baac186dd7e008555b0f702b51945b6"
 dependencies = [
  "unicode-xid 0.0.4",
+]
+
+[[package]]
+name = "sys-locale"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91f89ebb59fa30d4f65fafc2d68e94f6975256fd87e812dd99cb6e020c8563df"
+dependencies = [
+ "cc",
+ "cstr_core",
+ "libc",
+ "web-sys",
+ "winapi",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 pub const CLIENT_CONFIG_FILE_NAME: &str = "silent.config";
 pub const CONFIG_FILE_MAGIC_NUMBER: u16 = 51338;
-pub const CONFIG_FILE_VERSION: u64 = 1;
+pub const CONFIG_FILE_VERSION: u64 = 2;
 
 pub const TEXT_SIZE: f64 = 18.0;
 pub const MESSAGE_AUTHOR_TEXT_SIZE: f64 = 16.0;

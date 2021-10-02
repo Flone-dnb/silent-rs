@@ -13,6 +13,7 @@ use std::sync::{mpsc, Arc, Mutex};
 // Custom.
 use crate::global_params::*;
 use crate::misc::formatter_max_characters::*;
+use crate::misc::locale_keys::*;
 use crate::services::audio_service::audio_service::UserVoiceData;
 use crate::services::config_service::*;
 use crate::services::net_service::*;
@@ -57,22 +58,58 @@ impl ConnectLayout {
                         Flex::column()
                             .cross_axis_alignment(CrossAxisAlignment::Start)
                             .with_flex_child(
-                                Label::new("Username: ").with_text_size(TEXT_SIZE).expand(),
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    format!(
+                                        "{}: ",
+                                        data.localization
+                                            .get(LOCALE_CONNECT_LAYOUT_USERNAME_TEXT)
+                                            .unwrap()
+                                    )
+                                })
+                                .with_text_size(TEXT_SIZE)
+                                .expand(),
                                 1.0,
                             )
                             .with_default_spacer()
                             .with_flex_child(
-                                Label::new("Server: ").with_text_size(TEXT_SIZE).expand(),
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    format!(
+                                        "{}: ",
+                                        data.localization
+                                            .get(LOCALE_CONNECT_LAYOUT_SERVER_TEXT)
+                                            .unwrap()
+                                    )
+                                })
+                                .with_text_size(TEXT_SIZE)
+                                .expand(),
                                 1.0,
                             )
                             .with_default_spacer()
                             .with_flex_child(
-                                Label::new("Port: ").with_text_size(TEXT_SIZE).expand(),
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    format!(
+                                        "{}: ",
+                                        data.localization
+                                            .get(LOCALE_CONNECT_LAYOUT_PORT_TEXT)
+                                            .unwrap()
+                                    )
+                                })
+                                .with_text_size(TEXT_SIZE)
+                                .expand(),
                                 1.0,
                             )
                             .with_default_spacer()
                             .with_flex_child(
-                                Label::new("Password: ").with_text_size(TEXT_SIZE).expand(),
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    format!(
+                                        "{}: ",
+                                        data.localization
+                                            .get(LOCALE_CONNECT_LAYOUT_PASSWORD_TEXT)
+                                            .unwrap()
+                                    )
+                                })
+                                .with_text_size(TEXT_SIZE)
+                                .expand(),
                                 1.0,
                             ),
                         1.0,
@@ -82,7 +119,6 @@ impl ConnectLayout {
                         Flex::column()
                             .with_flex_child(
                                 TextBox::new()
-                                    .with_placeholder("Type your username...")
                                     .with_text_size(TEXT_SIZE)
                                     .with_formatter(MaxCharactersFormatter::new(MAX_USERNAME_SIZE))
                                     .update_data_while_editing(true)
@@ -96,7 +132,6 @@ impl ConnectLayout {
                             .with_default_spacer()
                             .with_flex_child(
                                 TextBox::new()
-                                    .with_placeholder("IP or domain name...")
                                     .with_text_size(TEXT_SIZE)
                                     .lens(
                                         ApplicationState::connect_layout
@@ -121,7 +156,6 @@ impl ConnectLayout {
                             .with_flex_child(
                                 TextBox::new()
                                     .with_text_size(TEXT_SIZE)
-                                    .with_placeholder("(optional)")
                                     .with_formatter(MaxCharactersFormatter::new(MAX_PASSWORD_SIZE))
                                     .update_data_while_editing(true)
                                     .lens(
@@ -156,9 +190,17 @@ impl ConnectLayout {
                 Flex::row()
                     .with_flex_child(SizedBox::empty().expand(), 35.0)
                     .with_flex_child(
-                        Button::from_label(Label::new("Connect").with_text_size(TEXT_SIZE))
-                            .on_click(ConnectLayout::on_connect_clicked)
-                            .expand(),
+                        Button::from_label(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                data.localization
+                                    .get(LOCALE_CONNECT_LAYOUT_CONNECT_TEXT)
+                                    .unwrap()
+                                    .clone()
+                            })
+                            .with_text_size(TEXT_SIZE),
+                        )
+                        .on_click(ConnectLayout::on_connect_clicked)
+                        .expand(),
                         30.0,
                     )
                     .with_flex_child(SizedBox::empty().expand(), 35.0),
@@ -169,9 +211,17 @@ impl ConnectLayout {
                 Flex::row()
                     .with_flex_child(SizedBox::empty().expand(), 35.0)
                     .with_flex_child(
-                        Button::from_label(Label::new("Settings").with_text_size(TEXT_SIZE))
-                            .on_click(ConnectLayout::on_settings_clicked)
-                            .expand(),
+                        Button::from_label(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                data.localization
+                                    .get(LOCALE_CONNECT_LAYOUT_SETTINGS_TEXT)
+                                    .unwrap()
+                                    .clone()
+                            })
+                            .with_text_size(TEXT_SIZE),
+                        )
+                        .on_click(ConnectLayout::on_settings_clicked)
+                        .expand(),
                         30.0,
                     )
                     .with_flex_child(SizedBox::empty().expand(), 35.0),

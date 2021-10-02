@@ -112,6 +112,10 @@ pub fn main() {
     };
 
     apply_config(&mut initial_state);
+    let mut _needed_locale = String::new();
+    {
+        _needed_locale = initial_state.user_config.lock().unwrap().locale.clone();
+    }
     read_localization("ru", &mut initial_state);
 
     // start the application. Here we pass in the application state.
@@ -211,6 +215,11 @@ fn read_localization(needed_locale: &str, data: &mut ApplicationState) {
     }
 
     data.localization = Arc::new(localization);
+
+    println!(
+        "SILENT_NOTIFICATION: using locale '{}' from config.",
+        needed_locale
+    );
 }
 
 struct Delegate;

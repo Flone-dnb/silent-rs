@@ -12,7 +12,7 @@ use system_wide_key_state::*;
 use std::thread;
 
 // Custom.
-use crate::misc::custom_slider_controller::*;
+use crate::misc::{custom_slider_controller::*, locale_keys::*};
 use crate::services::user_tcp_service::ConnectResult;
 use crate::theme::*;
 use crate::ApplicationState;
@@ -103,23 +103,47 @@ impl SettingsLayout {
                         .main_axis_alignment(MainAxisAlignment::Center)
                         .with_flex_child(SizedBox::empty().expand(), 10.0)
                         .with_flex_child(
-                            Button::from_label(Label::new("General").with_text_size(TEXT_SIZE))
-                                .on_click(SettingsLayout::on_general_button_clicked)
-                                .expand(),
+                            Button::from_label(
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    data.localization
+                                        .get(LOCALE_SETTINGS_LAYOUT_GENERAL_SECTION_TEXT)
+                                        .unwrap()
+                                        .clone()
+                                })
+                                .with_text_size(TEXT_SIZE),
+                            )
+                            .on_click(SettingsLayout::on_general_button_clicked)
+                            .expand(),
                             10.0,
                         )
                         .with_flex_child(SizedBox::empty().expand(), 5.0)
                         .with_flex_child(
-                            Button::from_label(Label::new("About").with_text_size(TEXT_SIZE))
-                                .on_click(SettingsLayout::on_about_button_clicked)
-                                .expand(),
+                            Button::from_label(
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    data.localization
+                                        .get(LOCALE_SETTINGS_LAYOUT_ABOUT_SECTION_TEXT)
+                                        .unwrap()
+                                        .clone()
+                                })
+                                .with_text_size(TEXT_SIZE),
+                            )
+                            .on_click(SettingsLayout::on_about_button_clicked)
+                            .expand(),
                             10.0,
                         )
                         .with_flex_child(SizedBox::empty().expand(), 45.0)
                         .with_flex_child(
-                            Button::from_label(Label::new("Back").with_text_size(TEXT_SIZE))
-                                .on_click(SettingsLayout::on_back_button_clicked)
-                                .expand(),
+                            Button::from_label(
+                                Label::new(|data: &ApplicationState, _env: &Env| {
+                                    data.localization
+                                        .get(LOCALE_SETTINGS_LAYOUT_BACK_BUTTON_TEXT)
+                                        .unwrap()
+                                        .clone()
+                                })
+                                .with_text_size(TEXT_SIZE),
+                            )
+                            .on_click(SettingsLayout::on_back_button_clicked)
+                            .expand(),
                             10.0,
                         )
                         .with_flex_child(SizedBox::empty().expand(), 10.0),
@@ -204,7 +228,11 @@ impl SettingsLayout {
         }
     }
     fn on_push_to_talk_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
-        data.settings_layout.push_to_talk_key_text = "Press any key...".to_string();
+        data.settings_layout.push_to_talk_key_text = data
+            .localization
+            .get(LOCALE_SETTINGS_LAYOUT_SETTING_PUSH_TO_TALK_BUTTON_CHANGE_TEXT)
+            .unwrap()
+            .clone();
 
         let event_sink = ctx.get_external_handle();
         thread::spawn(move || {
@@ -242,14 +270,27 @@ impl SettingsLayout {
                 .main_axis_alignment(MainAxisAlignment::Start)
                 .cross_axis_alignment(CrossAxisAlignment::Start)
                 .with_child(
-                    Label::new("NOTE: A restart is required to apply the changed parameters.")
-                        .with_text_color(Color::RED)
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .with_text_size(TEXT_SIZE),
+                    Label::new(|data: &ApplicationState, _env: &Env| {
+                        data.localization
+                            .get(LOCALE_SETTINGS_LAYOUT_RESTART_NOTE_TEXT)
+                            .unwrap()
+                            .clone()
+                    })
+                    .with_text_color(Color::RED)
+                    .with_line_break_mode(LineBreaking::WordWrap)
+                    .with_text_size(TEXT_SIZE),
                 )
                 .with_default_spacer()
                 .with_default_spacer()
-                .with_child(Label::new("Master Output Volume").with_text_size(TEXT_SIZE))
+                .with_child(
+                    Label::new(|data: &ApplicationState, _env: &Env| {
+                        data.localization
+                            .get(LOCALE_SETTINGS_LAYOUT_SETTING_MASTER_VOLUME_TEXT)
+                            .unwrap()
+                            .clone()
+                    })
+                    .with_text_size(TEXT_SIZE),
+                )
                 .with_child(
                     Flex::row()
                         .must_fill_main_axis(true)
@@ -278,7 +319,19 @@ impl SettingsLayout {
                 .with_default_spacer()
                 .with_child(
                     Flex::row()
-                        .with_child(Label::new("Push-to-Talk Button:  ").with_text_size(TEXT_SIZE))
+                        .with_child(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!(
+                                    "{}:  ",
+                                    data.localization
+                                        .get(
+                                            LOCALE_SETTINGS_LAYOUT_SETTING_PUSH_TO_TALK_BUTTON_TEXT
+                                        )
+                                        .unwrap()
+                                )
+                            })
+                            .with_text_size(TEXT_SIZE),
+                        )
                         .with_child(
                             Button::from_label(
                                 Label::new(|data: &ApplicationState, _env: &Env| {
@@ -292,14 +345,31 @@ impl SettingsLayout {
                 .with_default_spacer()
                 .with_child(
                     Flex::row()
-                        .with_child(Label::new("Message notifications: ").with_text_size(TEXT_SIZE))
+                        .with_child(Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!(
+                                    "{}:  ",
+                                    data.localization
+                                        .get(
+                                            LOCALE_SETTINGS_LAYOUT_SETTING_MESSAGE_NOTIFICATIONS_TEXT
+                                        )
+                                        .unwrap()
+                                )
+                            }).with_text_size(TEXT_SIZE))
                         .with_child(
                             Button::from_label(
                                 Label::new(|data: &ApplicationState, _env: &Env| {
                                     if data.settings_layout.show_message_notification {
-                                        String::from("show")
+                                        data.localization
+                                        .get(
+                                            LOCALE_SETTINGS_LAYOUT_SETTING_MESSAGE_NOTIFICATIONS_BUTTON_ON_TEXT
+                                        )
+                                        .unwrap().clone()
                                     } else {
-                                        String::from("don't show")
+                                        data.localization
+                                        .get(
+                                            LOCALE_SETTINGS_LAYOUT_SETTING_MESSAGE_NOTIFICATIONS_BUTTON_OFF_TEXT
+                                        )
+                                        .unwrap().clone()
                                     }
                                 })
                                 .with_text_size(TEXT_SIZE),
@@ -317,24 +387,51 @@ impl SettingsLayout {
                 .main_axis_alignment(MainAxisAlignment::Start)
                 .cross_axis_alignment(CrossAxisAlignment::Start)
                 .with_child(
-                    Label::new("Silent is a cross-platform open-source voice chat.\n")
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .with_text_size(TEXT_SIZE),
+                    Label::new(|data: &ApplicationState, _env: &Env| {
+                        format!(
+                            "{}\n",
+                            data.localization
+                                .get(LOCALE_SETTINGS_LAYOUT_ABOUT_SECTION_APP_DESC_TEXT)
+                                .unwrap()
+                        )
+                    })
+                    .with_line_break_mode(LineBreaking::WordWrap)
+                    .with_text_size(TEXT_SIZE),
                 )
                 .with_child(
-                    Label::new(String::from("Version: ") + env!("CARGO_PKG_VERSION") + " (rs).")
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .with_text_size(TEXT_SIZE),
+                    Label::new(|data: &ApplicationState, _env: &Env| {
+                        format!(
+                            "{}: {} (rs).",
+                            data.localization
+                                .get(LOCALE_SETTINGS_LAYOUT_ABOUT_SECTION_APP_VERSION_TEXT)
+                                .unwrap(),
+                            env!("CARGO_PKG_VERSION"),
+                        )
+                    })
+                    .with_line_break_mode(LineBreaking::WordWrap)
+                    .with_text_size(TEXT_SIZE),
                 )
                 .with_child(
                     Flex::row()
                         .with_child(
-                            Label::new("The source code is available ")
-                                .with_line_break_mode(LineBreaking::WordWrap)
-                                .with_text_size(TEXT_SIZE),
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!(
+                            "{} ",
+                            data.localization
+                                .get(LOCALE_SETTINGS_LAYOUT_ABOUT_SECTION_APP_SOURCE_CODE_TEXT)
+                                .unwrap())
+                            })
+                            .with_line_break_mode(LineBreaking::WordWrap)
+                            .with_text_size(TEXT_SIZE),
                         )
                         .with_child(
-                            Button::from_label(Label::new("here").with_text_size(TEXT_SIZE))
+                            Button::from_label(Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!(
+                            "{}",
+                            data.localization
+                                .get(LOCALE_SETTINGS_LAYOUT_ABOUT_SECTION_APP_SOURCE_CODE_BUTTON_TEXT)
+                                .unwrap())
+                            }).with_text_size(TEXT_SIZE))
                                 .on_click(|_ctx, _data, _env| {
                                     opener::open("https://github.com/Flone-dnb/silent-rs").unwrap();
                                 }),
@@ -342,7 +439,13 @@ impl SettingsLayout {
                 )
                 .with_child(
                     Label::new(
-                        "\nThe UI is powered by the Druid (data-oriented Rust UI design toolkit).",
+                        |data: &ApplicationState, _env: &Env| {
+                                format!(
+                            "\n{}",
+                            data.localization
+                                .get(LOCALE_SETTINGS_LAYOUT_ABOUT_SECTION_DRUID_TEXT)
+                                .unwrap())
+                            }
                     )
                     .with_line_break_mode(LineBreaking::WordWrap)
                     .with_text_size(TEXT_SIZE),
