@@ -351,6 +351,7 @@ impl AppDelegate<ApplicationState> for Delegate {
             // TODO: when #1997 is resolved implement:
             // 1. show notifications only when the window is minimized,
             // 2. if there are unread messages (while minimized) show notification about them every minute.
+            // 3. add an option to turn on/off unread messages notifications (p. 2)
             let todo_notifications_variable = 42;
             println!(
                 "{:?}",
