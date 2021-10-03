@@ -10,7 +10,7 @@ homepage = "https://github.com/Flone-dnb/silent-rs"
 readme = "README.md"
 
 [dependencies]
-druid = { git = "https://github.com/linebender/druid.git", features = ["im"] }
+druid = { git = "https://github.com/linebender/druid.git" }
 druid-shell = {git = "https://github.com/linebender/druid.git"}
 opener = "0.5.0"
 rdev = "0.5.1"

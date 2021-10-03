@@ -2,7 +2,7 @@
 use druid::widget::prelude::*;
 use druid::widget::{
     Button, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding,
-    SizedBox, Slider, ViewSwitcher,
+    Scroll, SizedBox, Slider, ViewSwitcher,
 };
 use druid::{Color, Data, Lens, LensExt, Selector, Target, WidgetExt};
 use rdev::{listen, EventType};
@@ -22,6 +22,12 @@ use crate::{global_params::*, Layout};
 pub const PUSH_TO_TALK_KEY_CHANGE_EVENT: Selector<String> =
     Selector::new("settings_push_to_talk_key_change_event");
 
+#[derive(Data, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub enum SupportedLocale {
+    En,
+    Ru,
+}
+
 #[derive(Clone, Data, PartialEq)]
 pub enum ActiveOption {
     General,
@@ -34,6 +40,7 @@ pub struct SettingsLayout {
     pub show_message_notification: bool,
     pub master_volume: f64,
     pub push_to_talk_key_text: String,
+    pub selected_locale: SupportedLocale,
     #[data(ignore)]
     pub push_to_talk_keycode: KeyCode,
 }
@@ -46,6 +53,7 @@ impl SettingsLayout {
             push_to_talk_key_text: "T".to_string(),
             push_to_talk_keycode: KeyCode::KT,
             show_message_notification: true,
+            selected_locale: SupportedLocale::En,
         }
     }
     pub fn build_ui() -> impl Widget<ApplicationState> {
@@ -192,6 +200,24 @@ impl SettingsLayout {
             .expect("failed to submit PUSH_TO_TALK_KEY_CHANGE_EVENT command");
 
         data.settings_layout.active_option = ActiveOption::About;
+    }
+    fn on_locale_changed(_ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
+        // Save to config.
+        let mut config_guard = data.user_config.lock().unwrap();
+        match data.settings_layout.selected_locale {
+            SupportedLocale::En => config_guard.locale = String::from("en"),
+            SupportedLocale::Ru => config_guard.locale = String::from("ru"),
+        }
+
+        if let Err(err) = config_guard.save() {
+            let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
+            if !data.is_connected {
+                data.connect_layout
+                    .set_connect_result(ConnectResult::Err(error_msg));
+            } else {
+                data.main_layout.add_system_message(error_msg);
+            }
+        }
     }
     fn on_back_button_clicked(ctx: &mut EventCtx, data: &mut ApplicationState, _env: &Env) {
         // finish changing push-to-talk button if it was pressed
@@ -376,6 +402,46 @@ impl SettingsLayout {
                             )
                             .on_click(SettingsLayout::on_show_message_notification_clicked),
                         ),
+                )
+                .with_default_spacer()
+                .with_child(
+                    Flex::column()
+                        .cross_axis_alignment(CrossAxisAlignment::Start)
+                        .with_child(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                let current_language = match data.settings_layout.selected_locale{
+                                    SupportedLocale::En => "English",
+                                    SupportedLocale::Ru => "Русский",
+                                };
+                                format!("{}: {}", 
+                                    data.localization.get(LOCALE_SETTINGS_LAYOUT_SETTING_LOCALE_TEXT)
+                                    .unwrap(), current_language
+                                )
+                            })
+                            .with_text_size(TEXT_SIZE),
+                        )
+                        .with_child(
+                            Scroll::new(
+                                Flex::column()
+                                    .cross_axis_alignment(CrossAxisAlignment::Start)
+                                    .with_child(
+                                        Button::from_label(Label::new("English").with_text_size(TEXT_SIZE))
+                                            .expand_width()
+                                            .on_click(|ctx: &mut EventCtx, data: &mut ApplicationState, env: &Env|{
+                                                data.settings_layout.selected_locale = SupportedLocale::En;
+                                                SettingsLayout::on_locale_changed(ctx, data, env);
+                                            })
+                                    )
+                                    .with_child(
+                                        Button::from_label(Label::new("Русский").with_text_size(TEXT_SIZE))
+                                            .expand_width()
+                                            .on_click(|ctx: &mut EventCtx, data: &mut ApplicationState, env: &Env|{
+                                                data.settings_layout.selected_locale = SupportedLocale::Ru;
+                                                SettingsLayout::on_locale_changed(ctx, data, env);
+                                            })
+                                    )
+                                ).vertical()
+                        )
                 ),
         )
     }

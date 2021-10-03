@@ -116,7 +116,7 @@ pub fn main() {
     {
         _needed_locale = initial_state.user_config.lock().unwrap().locale.clone();
     }
-    read_localization("ru", &mut initial_state);
+    read_localization(&_needed_locale, &mut initial_state);
 
     // start the application. Here we pass in the application state.
     AppLauncher::with_window(main_window)
@@ -147,6 +147,11 @@ fn apply_config(data: &mut ApplicationState) {
     data.settings_layout.push_to_talk_key_text = get_key_name(config_guard.push_to_talk_button);
     data.settings_layout.push_to_talk_keycode = config_guard.push_to_talk_button;
     data.settings_layout.show_message_notification = config_guard.show_message_notification;
+    if config_guard.locale == "en" {
+        data.settings_layout.selected_locale = SupportedLocale::En;
+    } else if config_guard.locale == "ru" {
+        data.settings_layout.selected_locale = SupportedLocale::Ru;
+    }
 
     data.audio_service.lock().unwrap().init(
         Arc::clone(&data.network_service),

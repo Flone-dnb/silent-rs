@@ -19,6 +19,7 @@ SETTINGS_LAYOUT_ABOUT_SECTION_APP_VERSION_TEXT,Version,Версия
 SETTINGS_LAYOUT_ABOUT_SECTION_APP_SOURCE_CODE_TEXT,The source code is available,Исходный код доступен
 SETTINGS_LAYOUT_ABOUT_SECTION_APP_SOURCE_CODE_BUTTON_TEXT,here,здесь
 SETTINGS_LAYOUT_ABOUT_SECTION_DRUID_TEXT,The UI is powered by the Druid (data-oriented Rust UI design toolkit).,Пользовательский интерфейс создан с помощью Druid (data-oriented Rust UI design toolkit).
+SETTINGS_LAYOUT_SETTING_LOCALE_TEXT,UI language,Язык интефейса
 SETTINGS_LAYOUT_BACK_BUTTON_TEXT,Back,Вернуться
 MAIN_LAYOUT_SETTINGS_BUTTON_TEXT,settings,настройки
 MAIN_LAYOUT_TEXT_CHAT_TITLE_TEXT,Text Chat,Текстовый чат
