@@ -5,6 +5,15 @@ CONNECT_LAYOUT_USERNAME_TEXT,Username,Имя пользователя
 CONNECT_LAYOUT_SERVER_TEXT,Server,Сервер
 CONNECT_LAYOUT_PORT_TEXT,Port,Порт
 CONNECT_LAYOUT_PASSWORD_TEXT,Password,Пароль
+CONNECT_LAYOUT_CONNECT_RESULT_FIN,"An IO error occurred, the server closed connection.","Возникла ошибка ввода/вывода, сервер закрыл соединение."
+CONNECT_LAYOUT_CONNECT_RESULT_ERR,An IO error occurred,Возникла ошибка ввода/вывода
+CONNECT_LAYOUT_CONNECT_RESULT_OTHER_ERR,There was an error,Возникла ошибка
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_SERVER_OFFLINE,"Can't connect to the server. Make sure the specified server and port are correct, otherwise the server might be offline.","Не получается подключиться к серверу. Убедитесь, что указанный сервер и порт корректны, иначе, возможно сервер не запущен."
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART1,"Server reply: wrong password, try again after","Ответ сервера: неверный пароль, попробуйте еще раз через"
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART2,seconds,секунды
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART1,Server reply: your client version,Ответ сервера: версия вашего приложения
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART2,"is not supported by this server, the server supports version","не поддерживается этим сервером, сервер поддерживает версию"
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_USERNAME_TAKEN,"Server reply: somebody with your username already persists on the server, please, choose another username.","Ответ сервера: кто-то с вашим именем уже находится на сервере, пожалуйста, выберите другое имя пользователя."
 SETTINGS_LAYOUT_GENERAL_SECTION_TEXT,General,Общее
 SETTINGS_LAYOUT_RESTART_NOTE_TEXT,A restart is required to apply the changed parameters.,Для применения изменений требуется перезапуск программы.
 SETTINGS_LAYOUT_SETTING_MASTER_VOLUME_TEXT,Master Output Volume,Общая громкость

@@ -89,11 +89,11 @@ impl UserInfo {
 pub enum ConnectResult {
     Ok,
     IoErr(IoResult),
+    ErrServerOffline,
+    UsernameTaken,
+    SleepWithErr(usize),  // sleep time in sec.
+    WrongVersion(String), // needed protocol
     Err(String),
-    SleepWithErr {
-        message: String,
-        sleep_in_sec: usize,
-    },
     InfoAboutOtherUser(UserInfo, String, u16),
     InfoAboutRoom(String),
 }
@@ -844,11 +844,8 @@ impl UserTcpService {
         let answer_id = u16::decode::<u16>(&in_buf).unwrap();
         match FromPrimitive::from_i32(answer_id as i32) {
             Some(ConnectServerAnswer::Ok) => {}
-            Some(ConnectServerAnswer::WrongPassword) =>{
-                return ConnectResult::SleepWithErr{
-                    message: format!("Server reply: wrong password, try again after {} seconds...", PASSWORD_RETRY_DELAY_SEC),
-                    sleep_in_sec: PASSWORD_RETRY_DELAY_SEC
-                };
+            Some(ConnectServerAnswer::WrongPassword) => {
+                return ConnectResult::SleepWithErr(PASSWORD_RETRY_DELAY_SEC);
             }
             Some(ConnectServerAnswer::WrongVersion) => {
                 // Get correct version string (get size first).
@@ -877,23 +874,22 @@ impl UserTcpService {
                     }
                 }
                 let ver_str = std::str::from_utf8(&required_ver_str_buf);
-                if let Err(e) = ver_str{
+                if let Err(e) = ver_str {
                     return ConnectResult::Err(
                         format!("std::str::from_utf8() failed, error: failed to convert on 'required_ver_str_buf' (error: {}) at [{}, {}]",
                         e, file!(), line!()));
                 }
-                return ConnectResult::Err(
-                        format!(
-                            "Server reply: your client version ({}) is not supported by this server, the server supports version ({}).",
-                            env!("CARGO_PKG_VERSION"),
-                            std::str::from_utf8(&required_ver_str_buf).unwrap()
-                        )
-                    );
+                return ConnectResult::WrongVersion(
+                    String::from(std::str::from_utf8(&required_ver_str_buf).unwrap()).clone(),
+                );
             }
-            Some(ConnectServerAnswer::UsernameTaken) =>
-            return ConnectResult::Err(String::from("Server reply: somebody with your username already persists on the server, please, choose another username.")),
+            Some(ConnectServerAnswer::UsernameTaken) => return ConnectResult::UsernameTaken,
             None => {
-                return ConnectResult::Err(format!("FromPrimitive::from_i32() failed at [{}, {}]", file!(), line!()))
+                return ConnectResult::Err(format!(
+                    "FromPrimitive::from_i32() failed at [{}, {}]",
+                    file!(),
+                    line!()
+                ))
             }
         }
 

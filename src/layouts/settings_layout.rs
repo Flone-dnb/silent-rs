@@ -213,7 +213,7 @@ impl SettingsLayout {
             let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
             if !data.is_connected {
                 data.connect_layout
-                    .set_connect_result(ConnectResult::Err(error_msg));
+                    .set_connect_result(ConnectResult::Err(error_msg), &data.localization);
             } else {
                 data.main_layout.add_system_message(error_msg);
             }
@@ -247,7 +247,7 @@ impl SettingsLayout {
             let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
             if !data.is_connected {
                 data.connect_layout
-                    .set_connect_result(ConnectResult::Err(error_msg));
+                    .set_connect_result(ConnectResult::Err(error_msg), &data.localization);
             } else {
                 data.main_layout.add_system_message(error_msg);
             }
@@ -534,7 +534,7 @@ impl SettingsLayout {
                 let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
                 if !data.is_connected {
                     data.connect_layout
-                        .set_connect_result(ConnectResult::Err(error_msg));
+                        .set_connect_result(ConnectResult::Err(error_msg), &data.localization);
                 } else {
                     data.main_layout.add_system_message(error_msg);
                 }
@@ -553,7 +553,7 @@ impl SettingsLayout {
             let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
             if !data.is_connected {
                 data.connect_layout
-                    .set_connect_result(ConnectResult::Err(error_msg));
+                    .set_connect_result(ConnectResult::Err(error_msg), &data.localization);
             } else {
                 data.main_layout.add_system_message(error_msg);
             }

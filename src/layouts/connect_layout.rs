@@ -7,6 +7,7 @@ use druid::widget::{
 use druid::{Lens, LensExt, TextAlignment, WidgetExt};
 use system_wide_key_state::*;
 
+use std::collections::HashMap;
 // Std.
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -265,16 +266,71 @@ impl ConnectLayout {
             Err(())
         }
     }
-    pub fn set_connect_result(&mut self, connect_result: ConnectResult) {
+    pub fn set_connect_result(
+        &mut self,
+        connect_result: ConnectResult,
+        localization: &Arc<HashMap<String, String>>,
+    ) {
         self.connect_result = match connect_result {
             ConnectResult::IoErr(io_err) => match io_err {
-                IoResult::FIN => {
-                    String::from("An IO error occurred, the server closed connection.")
-                }
-                IoResult::Err(e) => format!("An IO error occurred, error: {}", e),
-                _ => String::from("An IO error occurred."),
+                IoResult::FIN => localization
+                    .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_FIN)
+                    .unwrap()
+                    .clone(),
+                IoResult::Err(e) => format!(
+                    "{}: {}",
+                    localization
+                        .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR)
+                        .unwrap(),
+                    e
+                ),
+                _ => format!(
+                    "{}.",
+                    localization
+                        .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR)
+                        .unwrap()
+                ),
             },
-            ConnectResult::Err(msg) => format!("There was an error: {}", msg),
+            ConnectResult::SleepWithErr(sleep_in_sec) => {
+                format!(
+                    "{} {} {}...",
+                    localization
+                        .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART1)
+                        .unwrap(),
+                    sleep_in_sec,
+                    localization
+                        .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART2)
+                        .unwrap()
+                )
+            }
+            ConnectResult::ErrServerOffline => localization
+                .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_SERVER_OFFLINE)
+                .unwrap()
+                .clone(),
+            ConnectResult::WrongVersion(server_version) => {
+                format!(
+                    "{} {} {} {}.",
+                    localization
+                        .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART1)
+                        .unwrap(),
+                    env!("CARGO_PKG_VERSION"),
+                    localization
+                        .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART2)
+                        .unwrap(),
+                    server_version
+                )
+            }
+            ConnectResult::UsernameTaken => localization
+                .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_USERNAME_TAKEN)
+                .unwrap()
+                .clone(),
+            ConnectResult::Err(msg) => format!(
+                "{}: {}",
+                localization
+                    .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_OTHER_ERR)
+                    .unwrap(),
+                msg
+            ),
             _ => String::from(""),
         };
     }
@@ -302,7 +358,7 @@ impl ConnectLayout {
 
         if let Err(msg) = ConnectLayout::check_fields_length(data) {
             data.connect_layout
-                .set_connect_result(ConnectResult::Err(msg));
+                .set_connect_result(ConnectResult::Err(msg), &data.localization);
             return;
         }
 
@@ -337,7 +393,8 @@ impl ConnectLayout {
 
             match received {
                 ConnectResult::Ok => {
-                    data.connect_layout.set_connect_result(ConnectResult::Ok);
+                    data.connect_layout
+                        .set_connect_result(ConnectResult::Ok, &data.localization);
                     if let Err(msg) = data.main_layout.add_user(
                         data.connect_layout.username.clone(),
                         String::from(""),
@@ -402,12 +459,11 @@ impl ConnectLayout {
                     }
                     data.main_layout.add_room(room_name);
                 }
-                ConnectResult::SleepWithErr {
-                    message,
-                    sleep_in_sec,
-                } => {
-                    data.connect_layout
-                        .set_connect_result(ConnectResult::Err(message));
+                ConnectResult::SleepWithErr(sleep_in_sec) => {
+                    data.connect_layout.set_connect_result(
+                        ConnectResult::SleepWithErr(sleep_in_sec),
+                        &data.localization,
+                    );
 
                     net_service_guard.password_retry = PasswordRetrySleep {
                         sleep: true,
@@ -416,7 +472,8 @@ impl ConnectLayout {
                     }
                 }
                 _ => {
-                    data.connect_layout.set_connect_result(received);
+                    data.connect_layout
+                        .set_connect_result(received, &data.localization);
                     break;
                 }
             }

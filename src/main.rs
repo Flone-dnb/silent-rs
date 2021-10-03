@@ -133,12 +133,10 @@ fn apply_config(data: &mut ApplicationState) {
     // Fill connect fields from config.
     if let Err(msg) = data.connect_layout.read_user_config(&config_guard) {
         data.connect_layout // use connect result to show this error
-            .set_connect_result(ConnectResult::Err(format!(
-                "{} at [{}, {}]",
-                msg,
-                file!(),
-                line!()
-            )));
+            .set_connect_result(
+                ConnectResult::Err(format!("{} at [{}, {}]", msg, file!(), line!())),
+                &data.localization,
+            );
     }
 
     //data.settings_layout.ui_scaling_slider_value = config.ui_scaling as i32;

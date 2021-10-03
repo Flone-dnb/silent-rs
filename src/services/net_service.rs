@@ -218,9 +218,9 @@ impl NetService {
             TcpStream::connect(format!("{}:{}", config.server_name, config.server_port));
 
         if tcp_socket.is_err() {
-            connect_layout_sender.send(ConnectResult::Err(
-                String::from("Can't connect to the server. Make sure the specified server and port are correct, otherwise the server might be offline.")
-            )).unwrap();
+            connect_layout_sender
+                .send(ConnectResult::ErrServerOffline)
+                .unwrap();
             return;
         }
 
