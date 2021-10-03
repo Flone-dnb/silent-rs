@@ -38,5 +38,7 @@ MAIN_LAYOUT_MESSAGE_USER_DISCONNECTED_TEXT,disconnected from the chat,отклю
 MAIN_LAYOUT_MESSAGE_CHANGE_ROOMS_TOO_QUICK_TEXT,You can't change rooms that quickly!,Вы не можете переключаться между комнатами так быстро!
 MAIN_LAYOUT_MESSAGE_SEND_MESSAGES_TOO_QUICK_TEXT,You can't send messages that quick!,Вы не можете отправлять сообщения так часто!
 MAIN_LAYOUT_MESSAGE_SYSTEM_ERROR_TEXT,An error occurred,Произошла ошибка
+MAIN_LAYOUT_MESSAGE_MESSAGE_TOO_LONG_PART1,Your message is too long,Ваше сообщение слишком большое
+MAIN_LAYOUT_MESSAGE_MESSAGE_TOO_LONG_PART2,characters when the limit is,"символов, в то время как максимум"
 MAIN_LAYOUT_MESSAGE_AUTHOR_SYSTEM_TEXT,SYSTEM,СИСТЕМА
 MAIN_LAYOUT_MESSAGE_AUTHOR_INFO_TEXT,INFO,ИНФО

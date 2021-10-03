@@ -333,8 +333,14 @@ impl MainLayout {
 
             if data.main_layout.message.chars().count() > MAX_MESSAGE_SIZE {
                 data.main_layout.add_system_message(format!(
-                    "Your message is too long ({} characters when the limit is {})!",
+                    "{} ({} {} {})!",
+                    data.localization
+                        .get(LOCALE_MAIN_LAYOUT_MESSAGE_MESSAGE_TOO_LONG_PART1)
+                        .unwrap(),
                     data.main_layout.message.chars().count(),
+                    data.localization
+                        .get(LOCALE_MAIN_LAYOUT_MESSAGE_MESSAGE_TOO_LONG_PART2)
+                        .unwrap(),
                     MAX_MESSAGE_SIZE
                 ));
                 return;
