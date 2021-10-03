@@ -1909,7 +1909,7 @@ dependencies = [
 
 [[package]]
 name = "silent"
-version = "2.0.2"
+version = "2.1.0"
 dependencies = [
  "aes",
  "block-modes",

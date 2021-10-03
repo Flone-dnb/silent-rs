@@ -53,6 +53,7 @@ impl UserVoiceData {
 pub struct AudioService {
     pub users_voice_data: Arc<Mutex<Vec<Arc<Mutex<UserVoiceData>>>>>,
     pub net_service: Option<Arc<Mutex<NetService>>>,
+    pub microphone_volume: i32,
     mtx_listen_push_to_talk: Arc<Mutex<bool>>, // because Mutex does not implement Clone
     master_output_volume: i32,
 }
@@ -64,14 +65,21 @@ impl Default for AudioService {
             mtx_listen_push_to_talk: Arc::new(Mutex::new(false)),
             users_voice_data: Arc::new(Mutex::new(Vec::new())),
             master_output_volume: 0,
+            microphone_volume: 0,
         }
     }
 }
 
 impl AudioService {
-    pub fn init(&mut self, net_service: Arc<Mutex<NetService>>, master_volume: i32) {
+    pub fn init(
+        &mut self,
+        net_service: Arc<Mutex<NetService>>,
+        master_volume: i32,
+        microphone_volume: i32,
+    ) {
         self.net_service = Some(net_service);
         self.master_output_volume = master_volume;
+        self.microphone_volume = microphone_volume;
     }
     pub fn add_user_voice_chunk(
         &mut self,
@@ -120,6 +128,7 @@ impl AudioService {
         &self,
         push_to_talk_key: KeyCode,
         net_service: Arc<Mutex<NetService>>,
+        microphone_volume: i32,
     ) {
         let mut guard = self.mtx_listen_push_to_talk.lock().unwrap();
         if *guard {
@@ -130,7 +139,7 @@ impl AudioService {
         }
 
         thread::spawn(move || {
-            AudioService::record_voice(push_to_talk_key, net_service);
+            AudioService::record_voice(push_to_talk_key, net_service, microphone_volume);
         });
     }
 }
@@ -278,9 +287,13 @@ impl AudioService {
             }
         }
     }
-    pub fn record_voice(push_to_talk_key: KeyCode, network_service: Arc<Mutex<NetService>>) {
+    pub fn record_voice(
+        push_to_talk_key: KeyCode,
+        network_service: Arc<Mutex<NetService>>,
+        microphone_volume: i32,
+    ) {
         let (sample_sender, sample_receiver) = mpsc::channel();
-        let mut voice_recorder = VoiceRecorder::new(sample_sender);
+        let mut voice_recorder = VoiceRecorder::new(sample_sender, microphone_volume);
         let mut driver = SoundRecorderDriver::new(&mut voice_recorder);
 
         driver.set_processing_interval(sfml::system::Time::milliseconds(INTERVAL_PROCESS_VOICE_MS));

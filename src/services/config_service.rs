@@ -21,6 +21,7 @@ pub struct UserConfig {
     pub server_password: String,
     pub ui_scaling: u16,
     pub master_volume: u16,
+    pub microphone_volume: u16,
     pub push_to_talk_button: KeyCode,
     pub show_message_notification: bool,
     pub locale: String,
@@ -249,6 +250,17 @@ impl UserConfig {
             ));
         }
 
+        // Write microphone volume
+        let res = UserConfig::write_u16_to_file(&mut config_file, self.microphone_volume);
+        if let Err(msg) = res {
+            return Err(format!(
+                "{} (writing microphone volume) at [{}, {}]",
+                msg,
+                file!(),
+                line!()
+            ));
+        }
+
         // new settings go here...
         //
         // also update CONFIG_FILE_VERSION if new options are added
@@ -295,6 +307,7 @@ impl UserConfig {
             server_password: String::from(""),
             ui_scaling: 100,
             master_volume: 100,
+            microphone_volume: 100,
             push_to_talk_button: KeyCode::KT,
             show_message_notification: true,
             locale,
@@ -529,6 +542,18 @@ impl UserConfig {
                 ));
             }
             user_config.locale = String::from_utf8(buf).unwrap();
+
+            // Read microphone volume
+            let microphone_volume = UserConfig::read_u16_from_file(&mut config_file);
+            if let Err(msg) = microphone_volume {
+                return Err(format!(
+                    "{} (reading microphone volume) at [{}, {}]",
+                    msg,
+                    file!(),
+                    line!()
+                ));
+            }
+            user_config.microphone_volume = microphone_volume.unwrap();
 
             //
             // please use 'config_version' variable to handle old config versions...

@@ -42,6 +42,7 @@ use theme::*;
 pub enum CustomSliderID {
     MasterVolumeSlider,
     UserVolumeSlider,
+    MicrophoneVolumeSlider,
 }
 
 #[derive(Clone, Copy, Data, PartialEq)]
@@ -142,6 +143,7 @@ fn apply_config(data: &mut ApplicationState) {
     //data.settings_layout.ui_scaling_slider_value = config.ui_scaling as i32;
     //data.ui_scaling = config.ui_scaling as f64 / 100.0;
     data.settings_layout.master_volume = config_guard.master_volume as f64;
+    data.settings_layout.microphone_volume = config_guard.microphone_volume as f64;
     data.settings_layout.push_to_talk_key_text = get_key_name(config_guard.push_to_talk_button);
     data.settings_layout.push_to_talk_keycode = config_guard.push_to_talk_button;
     data.settings_layout.show_message_notification = config_guard.show_message_notification;
@@ -154,6 +156,7 @@ fn apply_config(data: &mut ApplicationState) {
     data.audio_service.lock().unwrap().init(
         Arc::clone(&data.network_service),
         config_guard.master_volume as i32,
+        config_guard.microphone_volume as i32,
     );
 }
 
@@ -249,6 +252,9 @@ impl AppDelegate<ApplicationState> for Delegate {
             match info.custom_slider_id {
                 CustomSliderID::MasterVolumeSlider => {
                     SettingsLayout::master_volume_slider_moved_event(data, info);
+                }
+                CustomSliderID::MicrophoneVolumeSlider => {
+                    SettingsLayout::microphone_volume_slider_moved_event(data, info);
                 }
                 CustomSliderID::UserVolumeSlider => {
                     MainLayout::user_volume_slider_moved_event(data);

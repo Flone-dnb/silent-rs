@@ -594,6 +594,7 @@ impl NetService {
             audio_service_guard.start_waiting_for_voice(
                 push_to_talk_key,
                 Arc::clone(audio_service_guard.net_service.as_ref().unwrap()),
+                audio_service_guard.microphone_volume,
             );
         }
 

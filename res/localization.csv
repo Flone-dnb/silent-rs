@@ -21,6 +21,7 @@ CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_PASSWORD_PART2,characters when the limit is,"
 SETTINGS_LAYOUT_GENERAL_SECTION_TEXT,General,Общее
 SETTINGS_LAYOUT_RESTART_NOTE_TEXT,A restart is required to apply the changed parameters.,Для применения изменений требуется перезапуск программы.
 SETTINGS_LAYOUT_SETTING_MASTER_VOLUME_TEXT,Master Output Volume,Общая громкость
+SETTINGS_LAYOUT_SETTING_MICROPHONE_VOLUME,Microphone Volume,Громкость микрофона
 SETTINGS_LAYOUT_SETTING_PUSH_TO_TALK_BUTTON_TEXT,Push-to-Talk Button,Кнопка активации микрофона
 SETTINGS_LAYOUT_SETTING_PUSH_TO_TALK_BUTTON_CHANGE_TEXT,Press any key…,Нажмите клавишу…
 SETTINGS_LAYOUT_SETTING_MESSAGE_NOTIFICATIONS_TEXT,Message notifications,Уведомления о сообщениях

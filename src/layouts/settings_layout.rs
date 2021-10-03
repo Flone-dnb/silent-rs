@@ -39,6 +39,7 @@ pub struct SettingsLayout {
     pub active_option: ActiveOption,
     pub show_message_notification: bool,
     pub master_volume: f64,
+    pub microphone_volume: f64,
     pub push_to_talk_key_text: String,
     pub selected_locale: SupportedLocale,
     #[data(ignore)]
@@ -50,6 +51,7 @@ impl SettingsLayout {
         SettingsLayout {
             active_option: ActiveOption::General,
             master_volume: 100.0,
+            microphone_volume: 100.0,
             push_to_talk_key_text: "T".to_string(),
             push_to_talk_keycode: KeyCode::KT,
             show_message_notification: true,
@@ -344,6 +346,41 @@ impl SettingsLayout {
                 )
                 .with_default_spacer()
                 .with_child(
+                    Label::new(|data: &ApplicationState, _env: &Env| {
+                        data.localization
+                            .get(LOCALE_SETTINGS_LAYOUT_SETTING_MICROPHONE_VOLUME)
+                            .unwrap()
+                            .clone()
+                    })
+                    .with_text_size(TEXT_SIZE),
+                )
+                .with_child(
+                    Flex::row()
+                        .must_fill_main_axis(true)
+                        .with_flex_child(
+                            Slider::new()
+                                .with_step(1.0)
+                                .with_range(0.0, 200.0)
+                                .expand_width()
+                                .controller(CustomSliderController::new(
+                                    CustomSliderID::MicrophoneVolumeSlider,
+                                ))
+                                .lens(
+                                    ApplicationState::settings_layout
+                                        .then(SettingsLayout::microphone_volume),
+                                ),
+                            80.0,
+                        )
+                        .with_flex_child(
+                            Label::new(|data: &ApplicationState, _env: &Env| {
+                                format!("{:.3} %", data.settings_layout.microphone_volume.to_string())
+                            })
+                            .with_text_size(TEXT_SIZE),
+                            20.0,
+                        ),
+                )
+                .with_default_spacer()
+                .with_child(
                     Flex::row()
                         .with_child(
                             Label::new(|data: &ApplicationState, _env: &Env| {
@@ -548,6 +585,24 @@ impl SettingsLayout {
         // Save to config.
         let mut config_guard = data.user_config.lock().unwrap();
         config_guard.master_volume = info.value;
+
+        if let Err(err) = config_guard.save() {
+            let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
+            if !data.is_connected {
+                data.connect_layout
+                    .set_connect_result(ConnectResult::Err(error_msg), &data.localization);
+            } else {
+                data.main_layout.add_system_message(error_msg);
+            }
+        }
+    }
+    pub fn microphone_volume_slider_moved_event(
+        data: &mut ApplicationState,
+        info: &OnCustomSliderMovedInfo,
+    ) {
+        // Save to config.
+        let mut config_guard = data.user_config.lock().unwrap();
+        config_guard.microphone_volume = info.value;
 
         if let Err(err) = config_guard.save() {
             let error_msg = format!("{} at [{}, {}]", err, file!(), line!());
