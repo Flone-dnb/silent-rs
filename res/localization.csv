@@ -11,8 +11,8 @@ CONNECT_LAYOUT_CONNECT_RESULT_OTHER_ERR,There was an error,Возникла ош
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_SERVER_OFFLINE,"Can't connect to the server. Make sure the specified server and port are correct, otherwise the server might be offline.","Не получается подключиться к серверу. Убедитесь, что указанный сервер и порт корректны, иначе, возможно сервер не запущен."
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART1,"Server reply: wrong password, try again after","Ответ сервера: неверный пароль, попробуйте еще раз через"
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART2,seconds,секунды
-CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART1,Server reply: your client version,Ответ сервера: версия вашего приложения
-CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART2,"is not supported by this server, the server supports version","не поддерживается этим сервером, сервер поддерживает версию"
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART1,Server reply: your client protocol version,Ответ сервера: версия протокола вашего приложения
+CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART2,"is not supported by this server, the server supports protocol version","не поддерживается этим сервером, сервер поддерживает версию протокола"
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_USERNAME_TAKEN,"Server reply: somebody with your username already persists on the server, please, choose another username.","Ответ сервера: кто-то с вашим именем уже находится на сервере, пожалуйста, выберите другое имя пользователя."
 CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_USERNAME_PART1,The username is too long,Имя пользователя слишком длинное
 CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_USERNAME_PART2,characters when the limit is,"символов, в то время как максимум"

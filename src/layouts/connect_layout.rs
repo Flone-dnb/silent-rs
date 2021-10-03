@@ -307,7 +307,7 @@ impl ConnectLayout {
                 .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_SERVER_OFFLINE)
                 .unwrap()
                 .clone(),
-            ConnectResult::WrongVersion(server_version) => {
+            ConnectResult::WrongProtocol(server_protocol) => {
                 format!(
                     "{} {} {} {}.",
                     localization
@@ -317,7 +317,7 @@ impl ConnectLayout {
                     localization
                         .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART2)
                         .unwrap(),
-                    server_version
+                    server_protocol
                 )
             }
             ConnectResult::UsernameTaken => localization

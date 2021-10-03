@@ -62,6 +62,7 @@ pub enum ClientMessageTcp {
     UserMessage = 0,
     EnterRoom = 1,
     KeepAliveCheck = 2,
+    TryConnect = 3,
 }
 
 pub struct UserMessageInfo {
@@ -91,8 +92,8 @@ pub enum ConnectResult {
     IoErr(IoResult),
     ErrServerOffline,
     UsernameTaken,
-    SleepWithErr(usize),  // sleep time in sec.
-    WrongVersion(String), // needed protocol
+    SleepWithErr(usize), // sleep time in sec.
+    WrongProtocol(u64),  // needed protocol
     Err(String),
     InfoAboutOtherUser(UserInfo, String, u16),
     InfoAboutRoom(String),
@@ -756,25 +757,47 @@ impl UserTcpService {
         info_sender: std::sync::mpsc::Sender<ConnectInfo>,
     ) -> ConnectResult {
         // Prepare initial send buffer:
-        // (u16): size of the version string,
-        // (size): version string,
+        // (u16): message id (TryConnect)
+        // (u64): net protocol version
         // (u16): size of the username,
         // (size): username string,
         // (u16): size of the password string,
         // (size): password string.
-        let ver_str_len = env!("CARGO_PKG_VERSION").len() as u16;
+
+        // Prepare data ID buffer.
+        let data_id = ClientMessageTcp::TryConnect.to_u16();
+        if data_id.is_none() {
+            return ConnectResult::IoErr(IoResult::Err(format!(
+                "ClientMessage::TryConnect.to_u16() failed at [{}, {}]",
+                file!(),
+                line!()
+            )));
+        }
+        let data_id = data_id.unwrap();
+        let data_id_buf = u16::encode::<u16>(&data_id);
+        if let Err(e) = data_id_buf {
+            return ConnectResult::Err(format!(
+                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
+                data_id,
+                e,
+                file!(),
+                line!()
+            ));
+        }
+        let mut data_id_buf = data_id_buf.unwrap();
+
+        let net_protocol_version = NETWORK_PROTOCOL_VERSION;
         let name_str_len = self.user_info.username.len() as u16;
 
         // Convert to buffers.
-        let mut ver_str_len_buf = u16::encode::<u16>(&ver_str_len).unwrap();
-        let mut ver_str_buf = Vec::from(env!("CARGO_PKG_VERSION").as_bytes());
         let mut name_str_len_buf = u16::encode::<u16>(&name_str_len).unwrap();
+        let mut net_protocol_version_buf = u64::encode::<u64>(&net_protocol_version).unwrap();
         let mut name_str_buf = Vec::from(self.user_info.username.as_bytes());
 
         // Move all buffers to one big buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
-        out_buffer.append(&mut ver_str_len_buf);
-        out_buffer.append(&mut ver_str_buf);
+        out_buffer.append(&mut data_id_buf);
+        out_buffer.append(&mut net_protocol_version_buf);
         out_buffer.append(&mut name_str_len_buf);
         out_buffer.append(&mut name_str_buf);
 
@@ -848,9 +871,10 @@ impl UserTcpService {
                 return ConnectResult::SleepWithErr(PASSWORD_RETRY_DELAY_SEC);
             }
             Some(ConnectServerAnswer::WrongVersion) => {
-                // Get correct version string (get size first).
+                // Get correct version.
+                let mut required_ver_buf = vec![0u8; std::mem::size_of::<u64>()];
                 loop {
-                    match self.read_from_socket(&mut in_buf) {
+                    match self.read_from_socket(&mut required_ver_buf) {
                         IoResult::WouldBlock => {
                             thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                             continue;
@@ -859,29 +883,13 @@ impl UserTcpService {
                         res => return ConnectResult::IoErr(res),
                     }
                 }
-                let required_ver_str_size = u16::decode::<u16>(&in_buf).unwrap();
-
-                // Get correct version string.
-                let mut required_ver_str_buf = vec![0u8; required_ver_str_size as usize];
-                loop {
-                    match self.read_from_socket(&mut required_ver_str_buf) {
-                        IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                            continue;
-                        }
-                        IoResult::Ok(_bytes) => break,
-                        res => return ConnectResult::IoErr(res),
-                    }
-                }
-                let ver_str = std::str::from_utf8(&required_ver_str_buf);
+                let ver_str = u64::decode::<u64>(&required_ver_buf);
                 if let Err(e) = ver_str {
                     return ConnectResult::Err(
-                        format!("std::str::from_utf8() failed, error: failed to convert on 'required_ver_str_buf' (error: {}) at [{}, {}]",
+                        format!("u64::decode::<u64>() failed, error: failed to convert on 'required_ver_str_buf' (error: {}) at [{}, {}]",
                         e, file!(), line!()));
                 }
-                return ConnectResult::WrongVersion(
-                    String::from(std::str::from_utf8(&required_ver_str_buf).unwrap()).clone(),
-                );
+                return ConnectResult::WrongProtocol(ver_str.unwrap());
             }
             Some(ConnectServerAnswer::UsernameTaken) => return ConnectResult::UsernameTaken,
             None => {
