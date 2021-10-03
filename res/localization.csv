@@ -14,6 +14,10 @@ CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_PASSWORD_PART2,seconds,секунды
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART1,Server reply: your client version,Ответ сервера: версия вашего приложения
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_WRONG_VERSION_PART2,"is not supported by this server, the server supports version","не поддерживается этим сервером, сервер поддерживает версию"
 CONNECT_LAYOUT_CONNECT_RESULT_ERR_USERNAME_TAKEN,"Server reply: somebody with your username already persists on the server, please, choose another username.","Ответ сервера: кто-то с вашим именем уже находится на сервере, пожалуйста, выберите другое имя пользователя."
+CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_USERNAME_PART1,The username is too long,Имя пользователя слишком длинное
+CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_USERNAME_PART2,characters when the limit is,"символов, в то время как максимум"
+CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_PASSWORD_PART1,The password is too long,Пароль слишком длинный
+CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_PASSWORD_PART2,characters when the limit is,"символов, в то время как максимум"
 SETTINGS_LAYOUT_GENERAL_SECTION_TEXT,General,Общее
 SETTINGS_LAYOUT_RESTART_NOTE_TEXT,A restart is required to apply the changed parameters.,Для применения изменений требуется перезапуск программы.
 SETTINGS_LAYOUT_SETTING_MASTER_VOLUME_TEXT,Master Output Volume,Общая громкость

@@ -337,16 +337,28 @@ impl ConnectLayout {
     fn check_fields_length(data: &mut ApplicationState) -> Result<(), String> {
         if data.connect_layout.username.chars().count() > MAX_USERNAME_SIZE {
             return Err(format!(
-                "The username is too long ({} characters when the limit is {}.",
+                "{} ({} {} {}).",
+                data.localization
+                    .get(LOCALE_CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_USERNAME_PART1)
+                    .unwrap(),
                 data.connect_layout.username.chars().count(),
+                data.localization
+                    .get(LOCALE_CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_USERNAME_PART2)
+                    .unwrap(),
                 MAX_USERNAME_SIZE
             ));
         }
 
         if data.connect_layout.password.chars().count() > MAX_PASSWORD_SIZE {
             return Err(format!(
-                "The password is too long ({} characters when the limit is {}.",
+                "{} ({} {} {}).",
+                data.localization
+                    .get(LOCALE_CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_PASSWORD_PART1)
+                    .unwrap(),
                 data.connect_layout.password.chars().count(),
+                data.localization
+                    .get(LOCALE_CONNECT_LAYOUT_CHECK_FIELDS_LENGTH_PASSWORD_PART2)
+                    .unwrap(),
                 MAX_PASSWORD_SIZE
             ));
         }
