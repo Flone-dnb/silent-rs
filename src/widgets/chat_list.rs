@@ -1,8 +1,10 @@
 // External.
 use chrono::prelude::*;
 use druid::widget::prelude::*;
-use druid::widget::{CrossAxisAlignment, Flex, Label, LineBreaking, Padding, Scroll, ViewSwitcher};
-use druid::{Color, Data, Lens};
+use druid::widget::{
+    Button, CrossAxisAlignment, EnvScope, Flex, Label, LineBreaking, Padding, Scroll, ViewSwitcher,
+};
+use druid::{Color, Data, Lens, WidgetExt};
 use sfml::audio::{Sound, SoundBuffer, SoundStatus};
 
 // Std.
@@ -14,6 +16,7 @@ use std::time::Duration;
 
 // Custom.
 use crate::global_params::*;
+use crate::misc::custom_data_button_controller::*;
 use crate::misc::locale_keys::*;
 use crate::ApplicationState;
 
@@ -132,10 +135,11 @@ pub enum MessageType {
 
 #[derive(Clone, Data)]
 pub struct ChatMessage {
-    message: String,
+    pub message: String,
     author: String,
     pub time: String,
     message_type: MessageType,
+    pub was_copied: bool,
 }
 
 impl ChatMessage {
@@ -172,6 +176,7 @@ impl ChatMessage {
             author,
             time: format!("{}:{}", hour, minute),
             message_type,
+            was_copied: false,
         }
     }
     pub fn get_ui(&self, data: &ApplicationState) -> impl Widget<ApplicationState> {
@@ -212,11 +217,22 @@ impl ChatMessage {
 
         match self.message_type {
             MessageType::UserMessage => {
-                message_column.add_child(
-                    Label::new(self.message.clone())
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .with_text_size(MESSAGE_TEXT_SIZE),
-                );
+                message_column.add_child(EnvScope::new(
+                    |env, _data| {
+                        env.set(druid::theme::BUTTON_DARK, Color::rgba8(0, 0, 0, 0));
+                        env.set(druid::theme::BUTTON_LIGHT, Color::rgba8(0, 0, 0, 0));
+                    },
+                    Button::from_label(
+                        Label::new(self.message.clone())
+                            .with_line_break_mode(LineBreaking::WordWrap)
+                            .with_text_size(MESSAGE_TEXT_SIZE),
+                    )
+                    .controller(CustomDataButtonController::new(
+                        CustomButtonData::MessageData {
+                            message: self.message.clone(),
+                        },
+                    )),
+                ));
             }
             MessageType::SystemMessage => {
                 message_column.add_child(

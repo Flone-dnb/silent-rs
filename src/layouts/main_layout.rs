@@ -3,7 +3,7 @@ use druid::widget::prelude::*;
 use druid::widget::{
     Button, Container, CrossAxisAlignment, Flex, Label, Padding, SizedBox, TextBox,
 };
-use druid::{Data, Lens, LensExt, WidgetExt};
+use druid::{Application, Data, Lens, LensExt, WidgetExt};
 use sfml::audio::{Sound, SoundBuffer, SoundStatus};
 
 // Std.
@@ -13,7 +13,7 @@ use std::time::Duration;
 // Custom.
 use crate::misc::formatter_max_characters::*; // add formatter when #1975 is resolved
 use crate::misc::{
-    custom_data_button_controller::CustomButtonData, custom_text_box_controller::*, locale_keys::*,
+    custom_data_button_controller::*, custom_text_box_controller::*, locale_keys::*,
 };
 use crate::services::net_service::ActionError;
 use crate::theme::BACKGROUND_SPECIAL_COLOR;
@@ -389,18 +389,64 @@ impl MainLayout {
             }
         }
     }
+    pub fn chat_list_message_pressed_event(
+        data: &mut ApplicationState,
+        button_info: &CustomButtonData,
+    ) {
+        match button_info {
+            CustomButtonData::ConnectedListData {
+                is_room: _,
+                button_name: _,
+            } => {
+                panic!("Unexpected data type at [{}, {}].", file!(), line!());
+            }
+            CustomButtonData::MessageData { message } => {
+                Application::global().clipboard().put_string(message);
+
+                // do it like this for now...
+                let mut messages_guard = data.main_layout.chat_list.messages.lock().unwrap();
+                for msg in messages_guard.iter_mut() {
+                    if msg.message == *message {
+                        if msg.was_copied {
+                            break;
+                        } else {
+                            msg.time += &format!(
+                                " ({})",
+                                data.localization
+                                    .get(LOCALE_MAIN_LAYOUT_MESSAGE_COPIED_NOTICE_TEXT)
+                                    .unwrap()
+                            );
+                            msg.was_copied = true;
+                            break;
+                        }
+                    }
+                }
+                data.main_layout.chat_list.refresh_ui = !data.main_layout.chat_list.refresh_ui;
+            }
+        }
+    }
     pub fn connect_list_item_pressed_event(
         data: &mut ApplicationState,
         button_info: &CustomButtonData,
     ) {
-        if button_info.is_room {
-            if data.main_layout.current_user_room != button_info.button_name {
-                if let Err(err) = data
-                    .network_service
-                    .lock()
-                    .unwrap()
-                    .enter_room(&button_info.button_name)
-                {
+        let mut _is_room_button: bool = false;
+        let mut _room_name = "";
+        match button_info {
+            CustomButtonData::ConnectedListData {
+                is_room,
+                button_name,
+            } => {
+                _is_room_button = *is_room;
+                _room_name = button_name;
+            }
+            CustomButtonData::MessageData { message: _ } => {
+                panic!("Unexpected data type at [{}, {}].", file!(), line!());
+            }
+        }
+
+        if _is_room_button {
+            if data.main_layout.current_user_room != _room_name {
+                if let Err(err) = data.network_service.lock().unwrap().enter_room(_room_name) {
                     match err {
                         ActionError::SystemError(msg) => {
                             data.main_layout.add_system_message(format!(
@@ -432,7 +478,7 @@ impl MainLayout {
             }
         } else {
             data.main_layout
-                .open_selected_user_info(button_info.button_name.clone());
+                .open_selected_user_info(String::from(_room_name));
         }
     }
     pub fn user_volume_slider_moved_event(data: &mut ApplicationState) {

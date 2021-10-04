@@ -8,9 +8,9 @@ pub const CUSTOM_DATA_BUTTON_CLICKED: Selector<CustomButtonData> =
     Selector::new("custom_data_button_clicked");
 
 #[derive(Clone)]
-pub struct CustomButtonData {
-    pub is_room: bool,
-    pub button_name: String,
+pub enum CustomButtonData {
+    ConnectedListData { is_room: bool, button_name: String },
+    MessageData { message: String },
 }
 
 pub struct CustomDataButtonController {

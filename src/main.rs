@@ -246,7 +246,17 @@ impl AppDelegate<ApplicationState> for Delegate {
             MainLayout::send_message_event(data);
             Handled::Yes
         } else if let Some(button_info) = cmd.get(CUSTOM_DATA_BUTTON_CLICKED) {
-            MainLayout::connect_list_item_pressed_event(data, button_info);
+            match button_info {
+                CustomButtonData::ConnectedListData {
+                    is_room: _,
+                    button_name: _,
+                } => {
+                    MainLayout::connect_list_item_pressed_event(data, button_info);
+                }
+                CustomButtonData::MessageData { message: _ } => {
+                    MainLayout::chat_list_message_pressed_event(data, button_info);
+                }
+            }
             Handled::Yes
         } else if let Some(info) = cmd.get(CUSTOM_SLIDER_ON_VALUE_CHANGED) {
             match info.custom_slider_id {

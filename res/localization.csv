@@ -56,3 +56,4 @@ MAIN_LAYOUT_MESSAGE_MESSAGE_TOO_LONG_PART1,Your message is too long,Ваше с�
 MAIN_LAYOUT_MESSAGE_MESSAGE_TOO_LONG_PART2,characters when the limit is,"символов, в то время как максимум"
 MAIN_LAYOUT_MESSAGE_AUTHOR_SYSTEM_TEXT,SYSTEM,СИСТЕМА
 MAIN_LAYOUT_MESSAGE_AUTHOR_INFO_TEXT,INFO,ИНФО
+MAIN_LAYOUT_MESSAGE_COPIED_NOTICE_TEXT,copied to clipboard,скопировано в буфер обмена

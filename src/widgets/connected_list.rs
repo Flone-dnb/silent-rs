@@ -300,10 +300,12 @@ impl RoomItem {
         // add room name first
         column.add_child(
             Button::from_label(Label::new(self.room_data.name.clone()).with_text_size(TEXT_SIZE))
-                .controller(CustomDataButtonController::new(CustomButtonData {
-                    is_room: true,
-                    button_name: self.room_data.name.clone(),
-                })),
+                .controller(CustomDataButtonController::new(
+                    CustomButtonData::ConnectedListData {
+                        is_room: true,
+                        button_name: self.room_data.name.clone(),
+                    },
+                )),
         );
 
         // then add users
@@ -361,7 +363,7 @@ impl UserItem {
                 env.set(druid::theme::BUTTON_LIGHT, Color::rgba8(0, 0, 0, 0));
             },
             Button::from_label(user_label).controller(CustomDataButtonController::new(
-                CustomButtonData {
+                CustomButtonData::ConnectedListData {
                     is_room: false,
                     button_name: self.user_data.username.clone(),
                 },
