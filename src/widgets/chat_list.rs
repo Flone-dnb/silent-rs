@@ -235,20 +235,42 @@ impl ChatMessage {
                 ));
             }
             MessageType::SystemMessage => {
-                message_column.add_child(
-                    Label::new(self.message.clone())
-                        .with_text_size(MESSAGE_TEXT_SIZE)
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .with_text_color(Color::RED),
-                );
+                message_column.add_child(EnvScope::new(
+                    |env, _data| {
+                        env.set(druid::theme::BUTTON_DARK, Color::rgba8(0, 0, 0, 0));
+                        env.set(druid::theme::BUTTON_LIGHT, Color::rgba8(0, 0, 0, 0));
+                    },
+                    Button::from_label(
+                        Label::new(self.message.clone())
+                            .with_text_size(MESSAGE_TEXT_SIZE)
+                            .with_line_break_mode(LineBreaking::WordWrap)
+                            .with_text_color(Color::RED),
+                    )
+                    .controller(CustomDataButtonController::new(
+                        CustomButtonData::MessageData {
+                            message: self.message.clone(),
+                        },
+                    )),
+                ));
             }
             MessageType::InfoMessage => {
-                message_column.add_child(
-                    Label::new(self.message.clone())
-                        .with_line_break_mode(LineBreaking::WordWrap)
-                        .with_text_size(MESSAGE_TEXT_SIZE)
-                        .with_text_color(Color::GRAY),
-                );
+                message_column.add_child(EnvScope::new(
+                    |env, _data| {
+                        env.set(druid::theme::BUTTON_DARK, Color::rgba8(0, 0, 0, 0));
+                        env.set(druid::theme::BUTTON_LIGHT, Color::rgba8(0, 0, 0, 0));
+                    },
+                    Button::from_label(
+                        Label::new(self.message.clone())
+                            .with_line_break_mode(LineBreaking::WordWrap)
+                            .with_text_size(MESSAGE_TEXT_SIZE)
+                            .with_text_color(Color::GRAY),
+                    )
+                    .controller(CustomDataButtonController::new(
+                        CustomButtonData::MessageData {
+                            message: self.message.clone(),
+                        },
+                    )),
+                ));
             }
         }
 
