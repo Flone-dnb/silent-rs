@@ -327,8 +327,13 @@ impl MainLayout {
     pub fn send_message_event(data: &mut ApplicationState) {
         if !data.main_layout.message.is_empty() {
             // remove last '\n's
-            while data.main_layout.message.chars().last().unwrap() == '\n' {
-                data.main_layout.message.pop();
+            loop {
+                let last = data.main_layout.message.chars().last();
+                if last.is_some() && last.unwrap() == '\n' {
+                    data.main_layout.message.pop();
+                } else {
+                    break;
+                }
             }
 
             if data.main_layout.message.chars().count() > MAX_MESSAGE_SIZE {
