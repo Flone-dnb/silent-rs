@@ -292,17 +292,19 @@ impl AudioService {
         network_service: Arc<Mutex<NetService>>,
         microphone_volume: i32,
     ) {
-        let (sample_sender, sample_receiver) = mpsc::channel();
-        let mut voice_recorder = VoiceRecorder::new(sample_sender, microphone_volume);
-        let mut driver = SoundRecorderDriver::new(&mut voice_recorder);
-
-        driver.set_processing_interval(sfml::system::Time::milliseconds(INTERVAL_PROCESS_VOICE_MS));
-        driver.set_channel_count(1);
-
         let mut push_to_talk_pressed = false;
 
         loop {
             if is_key_pressed(push_to_talk_key) && push_to_talk_pressed == false {
+                let (sample_sender, sample_receiver) = mpsc::channel();
+                let mut voice_recorder = VoiceRecorder::new(sample_sender, microphone_volume);
+                let mut driver = SoundRecorderDriver::new(&mut voice_recorder);
+
+                driver.set_processing_interval(sfml::system::Time::milliseconds(
+                    INTERVAL_PROCESS_VOICE_MS,
+                ));
+                driver.set_channel_count(1);
+                driver.start(SAMPLE_RATE);
                 push_to_talk_pressed = true;
 
                 // Play push-to-talk sound.
@@ -314,8 +316,6 @@ impl AudioService {
                         std::thread::sleep(Duration::from_secs(1));
                     }
                 });
-
-                driver.start(SAMPLE_RATE);
 
                 let mut recorded_chunk_count = 0usize;
                 let mut samples: Vec<i16> = Vec::new();
@@ -345,13 +345,27 @@ impl AudioService {
                                 .send_voice_message(voice_chunk);
                         }
 
-                        recorded_chunk_count += 1;
                         if recorded_chunk_count >= MIN_CHUNKS_TO_RECORD {
                             // see if we need to stop
-                            if is_key_pressed(push_to_talk_key) == false {
-                                stop = true;
-                                break;
+                            if stop || is_key_pressed(push_to_talk_key) == false {
+                                if stop == false {
+                                    driver.stop();
+                                    stop = true;
+                                }
+                                if samples.len() < SAMPLES_IN_CHUNK {
+                                    // see if there are samples ready
+                                    if let Ok(mut new_samples) = sample_receiver.try_recv() {
+                                        samples.append(&mut new_samples);
+                                        if samples.len() < SAMPLES_IN_CHUNK {
+                                            break; // stop
+                                        } // else go send last samples
+                                    } else {
+                                        break; // stop
+                                    }
+                                } // else go send last samples
                             }
+                        } else {
+                            recorded_chunk_count += 1;
                         }
                     }
 
@@ -359,8 +373,6 @@ impl AudioService {
                         break;
                     }
                 }
-
-                driver.stop();
 
                 // Play push-to-talk sound.
                 thread::spawn(move || {
