@@ -33,7 +33,8 @@ impl SoundRecorder for VoiceRecorder {
             *sample = new_sample as i16;
         });
 
-        self.sample_sender.send(sample_vec).unwrap();
+        // ignore send errors
+        let _result = self.sample_sender.send(sample_vec);
 
         true
     }
