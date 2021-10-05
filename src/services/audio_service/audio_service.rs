@@ -19,12 +19,13 @@ use crate::global_params::*;
 use crate::services::net_service::*;
 
 const INTERVAL_PROCESS_VOICE_MS: i32 = 10;
-const INTERVAL_WAIT_FOR_NEW_CHUNKS: u64 = 10;
-const SAMPLES_IN_CHUNK: usize = 679; // ~20 ms with 34000 sample rate
+const INTERVAL_CHECK_PUSH_TO_TALK_MS: u64 = 5;
 const SAMPLE_RATE: u32 = 34000;
+// if changing probably also need to change MIN_CHUNKS_TO_START_PLAY and MIN_CHUNKS_TO_RECORD
+const SAMPLES_IN_CHUNK: usize = 679; // ~20 ms with 34000 sample rate
 const MIN_CHUNKS_TO_RECORD: usize = 6;
 const MIN_CHUNKS_TO_START_PLAY: usize = 3;
-const INTERVAL_CHECK_PUSH_TO_TALK_MS: u64 = 5;
+const INTERVAL_WAIT_FOR_NEW_CHUNKS_MS: u64 = 10;
 
 pub const AUDIO_SERVICE_ON_USER_TALK_START: Selector<String> =
     Selector::new("audio_service_on_user_talk_start");
@@ -173,6 +174,7 @@ impl AudioService {
                 }
             }
 
+            // too long no answer
             let time_delta = chrono::Local::now() - last_time_recv_chunk;
             if time_delta.num_seconds() as u64 >= MAX_WAIT_TIME_IN_VOICE_PLAYER_SEC {
                 stop = true;
@@ -187,7 +189,9 @@ impl AudioService {
                 }
                 return;
             } else if sleep {
-                thread::sleep(Duration::from_millis(INTERVAL_WAIT_FOR_NEW_CHUNKS as u64));
+                thread::sleep(Duration::from_millis(
+                    INTERVAL_WAIT_FOR_NEW_CHUNKS_MS as u64,
+                ));
             } else {
                 break;
             }
@@ -200,7 +204,7 @@ impl AudioService {
 
         let mut _sent_chunks: usize = 0;
         let mut _user_volume = 100;
-        // Send initial chunks.
+        // Send initial chunks to player.
         {
             let mut user_guard = user.lock().unwrap();
             for chunk in user_guard.chunks.iter() {
@@ -226,7 +230,9 @@ impl AudioService {
         player.play();
 
         // Wait for new chunks.
-        thread::sleep(Duration::from_millis(INTERVAL_WAIT_FOR_NEW_CHUNKS as u64));
+        thread::sleep(Duration::from_millis(
+            INTERVAL_WAIT_FOR_NEW_CHUNKS_MS as u64,
+        ));
 
         stop = false;
 
@@ -266,7 +272,9 @@ impl AudioService {
                 break;
             }
             if sleep {
-                thread::sleep(Duration::from_millis(INTERVAL_WAIT_FOR_NEW_CHUNKS as u64));
+                thread::sleep(Duration::from_millis(
+                    INTERVAL_WAIT_FOR_NEW_CHUNKS_MS as u64,
+                ));
             }
         }
 
