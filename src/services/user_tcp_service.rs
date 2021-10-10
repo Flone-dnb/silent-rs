@@ -4,8 +4,7 @@ use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
 use bytevec::{ByteDecodable, ByteEncodable};
 use druid::{ExtEventSink, Selector, Target};
-use num_bigint::BigUint;
-use num_bigint::ToBigUint;
+use num_bigint::{BigUint, RandomBits, ToBigUint};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
@@ -22,6 +21,8 @@ use std::time::Duration;
 // Custom.
 use super::tcp_packets::*;
 use crate::global_params::*;
+
+const A_B_BITS: u64 = 2048;
 
 pub const USER_TCP_SERVICE_USER_CONNECTED: Selector<String> =
     Selector::new("user_tcp_service_user_connected");
@@ -148,15 +149,14 @@ impl UserTcpService {
     }
     pub fn establish_secure_connection(&mut self) -> Result<Vec<u8>, HandleMessageResult> {
         // Generate secret key 'b'.
-
         let mut rng = rand::thread_rng();
-        let b = rng.gen_range(1000000u64..10000000000000000000u64);
+        let b: BigUint = rng.sample(RandomBits::new(A_B_BITS));
 
-        // Receive 2 int values: p, g values.
-
-        let mut p_g_buf = vec![0u8; std::mem::size_of::<u32>() * 2];
+        // Receive 2 values: p (BigUint), g (BigUint) values.
+        // Get 'p' len.
+        let mut p_len_buf = vec![0u8; std::mem::size_of::<u64>()];
         loop {
-            match self.read_from_socket(&mut p_g_buf) {
+            match self.read_from_socket(&mut p_len_buf) {
                 IoResult::FIN => {
                     return Err(HandleMessageResult::IOError(IoResult::FIN));
                 }
@@ -177,42 +177,126 @@ impl UserTcpService {
                 }
             }
         }
-
-        // Read p and g value.
-
-        let p = u32::decode::<u32>(&p_g_buf[0..std::mem::size_of::<u32>()]);
-        if let Err(e) = p {
+        let p_len = bincode::deserialize::<u64>(&p_len_buf);
+        if let Err(e) = p_len {
             return Err(HandleMessageResult::OtherErr(format!(
-                "u32::decode::<u32>() failed, error: {}, at [{}, {}]",
+                "bincode::deserialize failed, error: {}, at [{}, {}]",
                 e,
                 file!(),
                 line!()
             )));
         }
-        let p = p.unwrap();
+        let p_len = p_len.unwrap();
 
-        let g = u32::decode::<u32>(
-            &p_g_buf[std::mem::size_of::<u32>()..std::mem::size_of::<u32>() * 2],
-        );
-        if let Err(e) = g {
+        // Get 'p' value.
+        let mut p_buf = vec![0u8; p_len as usize];
+        loop {
+            match self.read_from_socket(&mut p_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+        let p_buf = bincode::deserialize::<BigUint>(&p_buf);
+        if let Err(e) = p_buf {
             return Err(HandleMessageResult::OtherErr(format!(
-                "u32::decode::<u32>() failed, error: {}, at [{}, {}]",
+                "bincode::deserialize failed, error: {}, at [{}, {}]",
                 e,
                 file!(),
                 line!()
             )));
         }
-        let g = g.unwrap();
+        let p = p_buf.unwrap();
+
+        // Get 'g' len.
+        let mut g_len_buf = vec![0u8; std::mem::size_of::<u64>()];
+        loop {
+            match self.read_from_socket(&mut g_len_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+        let g_len = bincode::deserialize::<u64>(&g_len_buf);
+        if let Err(e) = g_len {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "bincode::deserialize failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let g_len = g_len.unwrap();
+
+        // Get 'g' value.
+        let mut g_buf = vec![0u8; g_len as usize];
+        loop {
+            match self.read_from_socket(&mut g_buf) {
+                IoResult::FIN => {
+                    return Err(HandleMessageResult::IOError(IoResult::FIN));
+                }
+                IoResult::Err(msg) => {
+                    return Err(HandleMessageResult::OtherErr(format!(
+                        "{} at [{}, {}]",
+                        msg,
+                        file!(),
+                        line!()
+                    )));
+                }
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_) => {
+                    break;
+                }
+            }
+        }
+        let g_buf = bincode::deserialize::<BigUint>(&g_buf);
+        if let Err(e) = g_buf {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "bincode::deserialize failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let g = g_buf.unwrap();
 
         // Calculate the open key B.
-
-        let g_big = g.to_biguint().unwrap();
-        let b_big = b.to_biguint().unwrap();
-        let p_big = p.to_biguint().unwrap();
-        let b_open = g_big.modpow(&b_big, &p_big);
+        let b_open = g.modpow(&b, &p);
 
         // Receive the open key A size.
-
         let mut a_open_len_buf = vec![0u8; std::mem::size_of::<u64>()];
         loop {
             match self.read_from_socket(&mut a_open_len_buf) {
@@ -237,10 +321,10 @@ impl UserTcpService {
             }
         }
 
-        let a_open_len = u64::decode::<u64>(&a_open_len_buf);
+        let a_open_len = bincode::deserialize::<u64>(&a_open_len_buf);
         if let Err(e) = a_open_len {
             return Err(HandleMessageResult::OtherErr(format!(
-                "u64::decode::<u64>() failed, error: {}, at [{}, {}]",
+                "bincode::deserialize failed, error: {}, at [{}, {}]",
                 e,
                 file!(),
                 line!()
@@ -249,7 +333,6 @@ impl UserTcpService {
         let a_open_len = a_open_len.unwrap();
 
         // Receive the open key A.
-
         let mut a_open_buf = vec![0u8; a_open_len as usize];
         loop {
             match self.read_from_socket(&mut a_open_buf) {
@@ -274,24 +357,33 @@ impl UserTcpService {
             }
         }
 
-        let a_open_big = BigUint::from_bytes_le(&a_open_buf);
+        let a_open_big = bincode::deserialize::<BigUint>(&a_open_buf);
+        if let Err(e) = a_open_big {
+            return Err(HandleMessageResult::OtherErr(format!(
+                "bincode::deserialize failed, error: {}, at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let a_open_big = a_open_big.unwrap();
 
         // Prepare to send open key B.
+        let mut b_open_buf = bincode::serialize(&b_open).unwrap();
 
-        let mut b_open_buf = b_open.to_bytes_le();
-
-        // Send open key 'B' size.
+        // Send open key 'B'.
         let b_open_len = b_open_buf.len() as u64;
-        let b_open_len_buf = u64::encode::<u64>(&b_open_len);
+        let b_open_len_buf = bincode::serialize(&b_open_len);
         if let Err(e) = b_open_len_buf {
             return Err(HandleMessageResult::OtherErr(format!(
-                "u64::encode::<u64>() failed, error: {}, at [{}, {}]",
+                "bincode::serialize failed, error: {}, at [{}, {}]",
                 e,
                 file!(),
                 line!()
             )));
         }
         let mut b_open_len_buf = b_open_len_buf.unwrap();
+        b_open_len_buf.append(&mut b_open_buf);
         loop {
             match self.write_to_socket(&mut b_open_len_buf) {
                 IoResult::FIN => {
@@ -315,45 +407,9 @@ impl UserTcpService {
             }
         }
 
-        // Send open key B.
-        loop {
-            match self.write_to_socket(&mut b_open_buf) {
-                IoResult::FIN => {
-                    return Err(HandleMessageResult::IOError(IoResult::FIN));
-                }
-                IoResult::Err(msg) => {
-                    return Err(HandleMessageResult::OtherErr(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => {
-                    break;
-                }
-            }
-        }
-
         // Calculate the secret key.
-
-        let secret_key = a_open_big.modpow(&b_big, &p_big);
-
-        let mut secret_key_str = secret_key.to_str_radix(10);
-
-        if secret_key_str.len() < 16 {
-            loop {
-                secret_key_str += &secret_key_str.clone();
-
-                if secret_key_str.len() >= 16 {
-                    break;
-                }
-            }
-        }
+        let secret_key = a_open_big.modpow(&b, &p);
+        let secret_key_str = secret_key.to_str_radix(10);
 
         Ok(Vec::from(&secret_key_str[0..16]))
     }

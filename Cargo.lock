@@ -1277,6 +1277,8 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
+ "rand",
+ "serde",
 ]
 
 [[package]]
