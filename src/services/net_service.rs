@@ -1,8 +1,6 @@
 // External.
-use bytevec::ByteDecodable;
 use chrono::prelude::*;
 use druid::{ExtEventSink, Selector, Target};
-use num_traits::FromPrimitive;
 use system_wide_key_state::*;
 
 // Std.
@@ -409,13 +407,13 @@ impl NetService {
                 }
 
                 // Got something.
-                let message = u16::decode::<u16>(&in_buf);
-                if let Err(e) = message {
+                let message_size = bincode::deserialize::<u16>(&in_buf);
+                if let Err(e) = message_size {
                     event_sink
                         .submit_command(
                             NETWORK_SERVICE_SYSTEM_IO_ERROR,
                             format!(
-                        "u16::decode::<u16>() failed, error: failed to decode on 'in_buf' (error: {}) at [{}, {}].\nClosing connection...",
+                        "bincode::deserialize failed, error: failed to decode on 'in_buf' (error: {}) at [{}, {}].\nClosing connection...",
                         e, file!(), line!()
                     ),
                             Target::Auto,
@@ -423,28 +421,12 @@ impl NetService {
                         .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
                     return;
                 }
-                let message = message.unwrap() as u16;
-                let message_id = ServerMessageTcp::from_u16(message);
-                if message_id.is_none() {
-                    _fin = true;
-                    event_sink
-                        .submit_command(
-                            NETWORK_SERVICE_SYSTEM_IO_ERROR,
-                            format!(
-                        "FromPrimitive::from_u16() failed on 'in_buf' (value: {}) at [{}, {}].\nClosing connection...",
-                        message, file!(), line!()
-                    ),
-                            Target::Auto,
-                        )
-                        .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
-                    break;
-                }
-                let message_id = message_id.unwrap();
+                let message_size = message_size.unwrap();
 
                 // Handle message.
                 {
                     let mut user_service_guard = user_tcp_service.lock().unwrap();
-                    match user_service_guard.handle_message(message_id, event_sink.clone()) {
+                    match user_service_guard.handle_message(message_size, event_sink.clone()) {
                         HandleMessageResult::Ok => {}
                         HandleMessageResult::IOError(err) => match err {
                             IoResult::FIN => {

@@ -331,7 +331,13 @@ impl ConnectLayout {
                     .unwrap(),
                 msg
             ),
-            _ => String::from(""),
+            ConnectResult::ErrServerIsFull => localization
+                .get(LOCALE_CONNECT_LAYOUT_CONNECT_RESULT_ERR_SERVER_IS_FULL)
+                .unwrap()
+                .clone(),
+            ConnectResult::InfoAboutOtherUser(_, _, _) => String::from(""), // will never be here
+            ConnectResult::InfoAboutRoom(_) => String::from(""),            // will never be here
+            ConnectResult::Ok => String::from(""),
         };
     }
     fn check_fields_length(data: &mut ApplicationState) -> Result<(), String> {

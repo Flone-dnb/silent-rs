@@ -8,9 +8,9 @@ use num_bigint::BigUint;
 use num_bigint::ToBigUint;
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
-use num_traits::FromPrimitive;
 use num_traits::ToPrimitive;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 // Std.
 use std::io::prelude::*;
@@ -20,6 +20,7 @@ use std::thread;
 use std::time::Duration;
 
 // Custom.
+use super::tcp_packets::*;
 use crate::global_params::*;
 
 pub const USER_TCP_SERVICE_USER_CONNECTED: Selector<String> =
@@ -40,15 +41,16 @@ pub enum UserState {
     Connected,
 }
 
-#[derive(FromPrimitive)]
-enum ConnectServerAnswer {
+#[derive(FromPrimitive, Serialize, Deserialize)]
+pub enum ConnectServerAnswer {
     Ok = 0,
     WrongVersion = 1,
     UsernameTaken = 2,
     WrongPassword = 3,
+    ServerIsFull = 4,
 }
 
-#[derive(FromPrimitive, ToPrimitive, PartialEq)]
+#[derive(FromPrimitive, ToPrimitive, PartialEq, Serialize, Deserialize)]
 pub enum ServerMessageTcp {
     UserConnected = 0,
     UserDisconnected = 1,
@@ -91,6 +93,7 @@ pub enum ConnectResult {
     Ok,
     IoErr(IoResult),
     ErrServerOffline,
+    ErrServerIsFull,
     UsernameTaken,
     SleepWithErr(usize), // sleep time in sec.
     WrongProtocol(u64),  // needed protocol
@@ -626,89 +629,67 @@ impl UserTcpService {
     }
     pub fn handle_message(
         &mut self,
-        message: ServerMessageTcp,
+        message_size: u16,
         event_sink: ExtEventSink,
     ) -> HandleMessageResult {
-        if message == ServerMessageTcp::KeepAliveCheck {
-            // resend this
-            if let Err(e) = self.send_keep_alive_check() {
-                return HandleMessageResult::IOError(e);
-            } else {
-                return HandleMessageResult::Ok;
+        // Receive packet.
+        let mut packet_buf = vec![0u8; message_size as usize];
+        loop {
+            match self.read_from_socket(&mut packet_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_bytes) => break,
+                res => return HandleMessageResult::IOError(res),
             }
         }
 
-        let mut username = String::new();
-        match self.read_u16_and_string_from_socket() {
-            Ok(name) => username = name,
-            Err(io_e) => match io_e {
-                IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return HandleMessageResult::IOError(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )))
-                }
-                _ => {}
-            },
+        // Decrypt packet.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let binary_server_packet = cipher.decrypt_vec(&packet_buf);
+        if let Err(e) = binary_server_packet {
+            return HandleMessageResult::IOError(IoResult::Err(format!(
+                "Unable to decrypt a packet (error: {}), at [{}, {}].",
+                e,
+                file!(),
+                line!()
+            )));
         }
+        let binary_server_packet = binary_server_packet.unwrap();
 
-        match message {
-            ServerMessageTcp::UserConnected => {
+        // Deserialize.
+        let server_packet = bincode::deserialize::<ServerTcpMessage>(&binary_server_packet);
+        if let Err(e) = server_packet {
+            return HandleMessageResult::IOError(IoResult::Err(format!(
+                "Unable to deserialize a packet (error: {}), at [{}, {}].",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let server_packet = server_packet.unwrap();
+
+        match server_packet {
+            ServerTcpMessage::KeepAliveCheck => {
+                if let Err(e) = self.send_keep_alive_check() {
+                    return HandleMessageResult::IOError(e);
+                } else {
+                    return HandleMessageResult::Ok;
+                }
+            }
+            ServerTcpMessage::UserConnected { username } => {
                 event_sink
                     .submit_command(USER_TCP_SERVICE_USER_CONNECTED, username, Target::Auto)
                     .expect("failed to submit USER_TCP_SERVICE_USER_CONNECTED command");
             }
-            ServerMessageTcp::UserDisconnected => {
+            ServerTcpMessage::UserDisconnected { username } => {
                 event_sink
                     .submit_command(USER_TCP_SERVICE_USER_DISCONNECTED, username, Target::Auto)
                     .expect("failed to submit USER_TCP_SERVICE_USER_DISCONNECTED command");
             }
-            ServerMessageTcp::UserMessage => {
-                let mut encrypted_message = Vec::new();
-                match self.read_u16_and_vec_from_socket() {
-                    Ok(msg) => encrypted_message = msg,
-                    Err(io_e) => match io_e {
-                        IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
-                        IoResult::Err(msg) => {
-                            return HandleMessageResult::IOError(IoResult::Err(format!(
-                                "{} at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )))
-                        }
-                        _ => {}
-                    },
-                }
-
-                // Decrypt message.
-                type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-                let cipher =
-                    Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
-                let decrypted_message = cipher.decrypt_vec(&encrypted_message);
-                if let Err(e) = decrypted_message {
-                    return HandleMessageResult::OtherErr(format!(
-                        "cipher.decrypt_vec() failed, error: {} at [{}, {}]",
-                        e,
-                        file!(),
-                        line!()
-                    ));
-                }
-                let user_message = decrypted_message.unwrap();
-                let message = String::from_utf8(user_message);
-                if let Err(e) = message {
-                    return HandleMessageResult::OtherErr(format!(
-                        "String::from_utf8() failed, error: {} at [{}, {}]",
-                        e,
-                        file!(),
-                        line!()
-                    ));
-                }
-                let message = message.unwrap();
-
+            ServerTcpMessage::UserMessage { username, message } => {
                 event_sink
                     .submit_command(
                         USER_TCP_SERVICE_USER_MESSAGE,
@@ -717,36 +698,21 @@ impl UserTcpService {
                     )
                     .expect("failed to submit USER_TCP_SERVICE_USER_MESSAGE command");
             }
-            ServerMessageTcp::UserEntersRoom => {
-                let mut room = String::new();
-                match self.read_u8_and_string_from_socket() {
-                    Ok(name) => room = name,
-                    Err(io_e) => match io_e {
-                        IoResult::FIN => return HandleMessageResult::IOError(IoResult::FIN),
-                        IoResult::Err(msg) => {
-                            return HandleMessageResult::IOError(IoResult::Err(format!(
-                                "{} at [{}, {}]",
-                                msg,
-                                file!(),
-                                line!()
-                            )))
-                        }
-                        _ => {}
-                    },
-                }
-
+            ServerTcpMessage::UserEntersRoom {
+                username,
+                room_enters,
+            } => {
                 event_sink
                     .submit_command(
                         USER_TCP_SERVICE_MOVE_USER_TO_ROOM,
                         UserMoveInfo {
                             username,
-                            room_to: room,
+                            room_to: room_enters,
                         },
                         Target::Auto,
                     )
                     .expect("failed to submit USER_TCP_SERVICE_MOVE_USER_TO_ROOM command");
             }
-            ServerMessageTcp::KeepAliveCheck => {} // already checked this message above
         }
 
         HandleMessageResult::Ok
@@ -756,94 +722,40 @@ impl UserTcpService {
         &mut self,
         info_sender: std::sync::mpsc::Sender<ConnectInfo>,
     ) -> ConnectResult {
-        // Prepare initial send buffer:
-        // (u16): message id (TryConnect)
-        // (u64): net protocol version
-        // (u16): size of the username,
-        // (size): username string,
-        // (u16): size of the password string,
-        // (size): password string.
+        let packet = ClientConnectPacket::new(
+            NETWORK_PROTOCOL_VERSION,
+            self.user_info.username.clone(),
+            self.server_password.clone(),
+        );
 
-        // Prepare data ID buffer.
-        let data_id = ClientMessageTcp::TryConnect.to_u16();
-        if data_id.is_none() {
-            return ConnectResult::IoErr(IoResult::Err(format!(
-                "ClientMessage::TryConnect.to_u16() failed at [{}, {}]",
+        let binary_packet = bincode::serialize(&packet).unwrap();
+
+        // Encrypt binary packet.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypted_binary_packet = cipher.encrypt_vec(&binary_packet);
+
+        if encrypted_binary_packet.len() + std::mem::size_of::<u16>() > std::u16::MAX as usize {
+            // should never happen
+            // using std::mem::size_of::<u16>() as packet size
+            panic!(
+                "Encrypted binary packet size + size_of::<u16> exceeded u16::MAX at [{}, {}].",
                 file!(),
                 line!()
-            )));
+            );
         }
-        let data_id = data_id.unwrap();
-        let data_id_buf = u16::encode::<u16>(&data_id);
-        if let Err(e) = data_id_buf {
-            return ConnectResult::Err(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                data_id,
-                e,
-                file!(),
-                line!()
-            ));
-        }
-        let mut data_id_buf = data_id_buf.unwrap();
+        let packet_size: u16 = encrypted_binary_packet.len() as u16;
+        let mut packet_size = bincode::serialize(&packet_size).unwrap();
 
-        let net_protocol_version = NETWORK_PROTOCOL_VERSION;
-        let name_str_len = self.user_info.username.len() as u16;
-
-        // Convert to buffers.
-        let mut name_str_len_buf = u16::encode::<u16>(&name_str_len).unwrap();
-        let mut net_protocol_version_buf = u64::encode::<u64>(&net_protocol_version).unwrap();
-        let mut name_str_buf = Vec::from(self.user_info.username.as_bytes());
-
-        // Move all buffers to one big buffer.
-        let mut out_buffer: Vec<u8> = Vec::new();
-        out_buffer.append(&mut data_id_buf);
-        out_buffer.append(&mut net_protocol_version_buf);
-        out_buffer.append(&mut name_str_len_buf);
-        out_buffer.append(&mut name_str_buf);
-
-        // now password
-        if !self.server_password.is_empty() {
-            // Encrypt password.
-            type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-            let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
-            let mut encrypted_password = cipher.encrypt_vec(self.server_password.as_bytes());
-
-            // Prepare encrypted password len buffer.
-            let encrypted_password_len = encrypted_password.len() as u16;
-            let encrypted_password_len_buf = u16::encode::<u16>(&encrypted_password_len);
-            if let Err(e) = encrypted_password_len_buf {
-                return ConnectResult::Err(format!(
-                    "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                    encrypted_password_len,
-                    e,
-                    file!(),
-                    line!()
-                ));
-            }
-            let mut encrypted_password_len_buf = encrypted_password_len_buf.unwrap();
-            out_buffer.append(&mut encrypted_password_len_buf);
-            out_buffer.append(&mut encrypted_password);
-        } else {
-            let server_pass_len = 0;
-            let pass_str_len_buf = u16::encode::<u16>(&server_pass_len);
-            if let Err(e) = pass_str_len_buf {
-                return ConnectResult::Err(format!(
-                    "u16::encode::<u16>() failed, error: {} at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                ));
-            }
-            let mut pass_str_len_buf = pass_str_len_buf.unwrap();
-            out_buffer.append(&mut pass_str_len_buf);
-        }
+        let mut send_buffer: Vec<u8> = Vec::new();
+        send_buffer.append(&mut packet_size);
+        send_buffer.append(&mut encrypted_binary_packet);
 
         // Send this buffer.
         loop {
-            match self.write_to_socket(&mut out_buffer) {
+            match self.write_to_socket(&mut send_buffer) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
                 }
                 IoResult::Ok(_bytes) => break,
                 res => return ConnectResult::IoErr(res),
@@ -851,9 +763,11 @@ impl UserTcpService {
         }
 
         // Wait for answer.
-        let mut in_buf = vec![0u8; std::mem::size_of::<u16>()];
+        // We usually use 'u16' as size of the data
+        // but this "packet" is an exception.
+        let mut data_size_buf = vec![0u8; std::mem::size_of::<u64>()];
         loop {
-            match self.read_from_socket(&mut in_buf) {
+            match self.read_from_socket(&mut data_size_buf) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
@@ -863,250 +777,85 @@ impl UserTcpService {
             }
         }
 
+        let data_size = bincode::deserialize::<u64>(&data_size_buf).unwrap();
+        if data_size > TCP_CONNECT_ANSWER_PACKET_MAX_SIZE {
+            return ConnectResult::IoErr(IoResult::Err(format!("The data size received from the server ({}) exceeds the maximum ({}), at [{}, {}].",
+            data_size, TCP_CONNECT_ANSWER_PACKET_MAX_SIZE, file!(), line!())));
+        }
+
+        let mut data_buf = vec![0u8; data_size as usize];
+        loop {
+            match self.read_from_socket(&mut data_buf) {
+                IoResult::WouldBlock => {
+                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
+                    continue;
+                }
+                IoResult::Ok(_bytes) => break,
+                res => return ConnectResult::IoErr(res),
+            }
+        }
+
+        // Decrypt packet.
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let binary_server_connect_packet = cipher.decrypt_vec(&data_buf);
+        if let Err(e) = binary_server_connect_packet {
+            return ConnectResult::IoErr(IoResult::Err(format!(
+                "Unable to decrypt a packet (error: {}), at [{}, {}].",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let binary_server_connect_packet = binary_server_connect_packet.unwrap();
+
+        // Deserialize.
+        let server_connect_packet =
+            bincode::deserialize::<ServerTcpConnectPacket>(&binary_server_connect_packet);
+        if let Err(e) = server_connect_packet {
+            return ConnectResult::IoErr(IoResult::Err(format!(
+                "Unable to deserialize a packet (error: {}), at [{}, {}].",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let server_connect_packet = server_connect_packet.unwrap();
+
         // See answer.
-        let answer_id = u16::decode::<u16>(&in_buf).unwrap();
-        match FromPrimitive::from_i32(answer_id as i32) {
-            Some(ConnectServerAnswer::Ok) => {}
-            Some(ConnectServerAnswer::WrongPassword) => {
+        match server_connect_packet.answer {
+            ConnectServerAnswer::Ok => {}
+            ConnectServerAnswer::WrongPassword => {
                 return ConnectResult::SleepWithErr(PASSWORD_RETRY_DELAY_SEC);
             }
-            Some(ConnectServerAnswer::WrongVersion) => {
-                // Get correct version.
-                let mut required_ver_buf = vec![0u8; std::mem::size_of::<u64>()];
-                loop {
-                    match self.read_from_socket(&mut required_ver_buf) {
-                        IoResult::WouldBlock => {
-                            thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                            continue;
-                        }
-                        IoResult::Ok(_bytes) => break,
-                        res => return ConnectResult::IoErr(res),
-                    }
-                }
-                let ver_str = u64::decode::<u64>(&required_ver_buf);
-                if let Err(e) = ver_str {
-                    return ConnectResult::Err(
-                        format!("u64::decode::<u64>() failed, error: failed to convert on 'required_ver_str_buf' (error: {}) at [{}, {}]",
-                        e, file!(), line!()));
-                }
-                return ConnectResult::WrongProtocol(ver_str.unwrap());
+            ConnectServerAnswer::WrongVersion => {
+                return ConnectResult::WrongProtocol(
+                    server_connect_packet.correct_net_protocol.unwrap(),
+                );
             }
-            Some(ConnectServerAnswer::UsernameTaken) => return ConnectResult::UsernameTaken,
-            None => {
-                return ConnectResult::Err(format!(
-                    "FromPrimitive::from_i32() failed at [{}, {}]",
-                    file!(),
-                    line!()
-                ))
-            }
+            ConnectServerAnswer::UsernameTaken => return ConnectResult::UsernameTaken,
+            ConnectServerAnswer::ServerIsFull => return ConnectResult::ErrServerIsFull,
         }
 
-        // Ok.
-        // Read info about all rooms.
-        // Read room count.
-        let mut room_count_buf = vec![0u8; std::mem::size_of::<u16>()];
-        loop {
-            match self.read_from_socket(&mut room_count_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                res => return ConnectResult::IoErr(res),
-            }
-        }
-        let room_count = u16::decode::<u16>(&room_count_buf);
-        if let Err(e) = room_count {
-            return ConnectResult::Err(format!(
-                "u64::decode::<u16>() failed, error: failed to decode on 'room_count_buf' (error: {}) at [{}, {}]",
-                e, file!(), line!()
-            ));
-        }
-        let room_count = room_count.unwrap();
-
-        // Read rooms.
-        for _ in 0..room_count {
-            // Read room name len.
-            let mut room_len_buf = vec![0u8; std::mem::size_of::<u8>()];
-            loop {
-                match self.read_from_socket(&mut room_len_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let room_len = u8::decode::<u8>(&room_len_buf);
-            if let Err(e) = room_len {
-                return ConnectResult::Err(format!(
-                    "u16::decode::<u8>() failed, error: failed to decode on 'room_len_buf' (error: {}) at [{}, {}]",
-                    e, file!(), line!()
-                ));
-            }
-            let room_len = room_len.unwrap();
-
-            // Read room.
-            let mut room_buf = vec![0u8; room_len as usize];
-            loop {
-                match self.read_from_socket(&mut room_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let room_name = std::str::from_utf8(&room_buf);
-            if let Err(e) = room_name {
-                return ConnectResult::Err(
-                    format!("std::str::from_utf8() failed, error: failed to convert on 'room_buf' (error: {}) at [{}, {}]",
-                    e, file!(), line!()));
-            }
-
+        // Read info about all rooms and users.
+        for room_info in server_connect_packet
+            .connected_info
+            .as_ref()
+            .unwrap()
+            .iter()
+        {
             info_sender
-                .send(ConnectInfo::RoomInfo(String::from(room_name.unwrap())))
+                .send(ConnectInfo::RoomInfo(room_info.room_name.clone()))
                 .unwrap();
-        }
 
-        // Read info about other users.
-        // Read user count.
-        let mut users_count_buf = vec![0u8; std::mem::size_of::<u64>()];
-        loop {
-            match self.read_from_socket(&mut users_count_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                res => return ConnectResult::IoErr(res),
+            for user in room_info.users.iter() {
+                info_sender
+                    .send(ConnectInfo::UserInfo(
+                        UserInfo::new(user.username.clone()),
+                        String::from(room_info.room_name.clone()),
+                        user.ping,
+                    ))
+                    .unwrap();
             }
-        }
-
-        let user_count = u64::decode::<u64>(&users_count_buf);
-        if let Err(e) = user_count {
-            return ConnectResult::Err(format!(
-                "u64::decode::<u64>() failed, error: failed to decode on 'users_count_buf' (error: {}) at [{}, {}]",
-                e, file!(), line!()
-            ));
-        }
-        let user_count = user_count.unwrap();
-
-        for _ in 0..user_count {
-            // Read username len.
-            let mut username_len_buf = vec![0u8; std::mem::size_of::<u16>()];
-            loop {
-                match self.read_from_socket(&mut username_len_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let username_len = u16::decode::<u16>(&username_len_buf);
-            if let Err(e) = username_len {
-                return ConnectResult::Err(format!(
-                    "u16::decode::<u16>() failed, error: failed to decode on 'username_len_buf' (error: {}) at [{}, {}]",
-                    e, file!(), line!()
-                ));
-            }
-            let username_len = username_len.unwrap();
-
-            // Read username.
-            let mut username_buf = vec![0u8; username_len as usize];
-            loop {
-                match self.read_from_socket(&mut username_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let username = std::str::from_utf8(&username_buf);
-            if let Err(e) = username {
-                return ConnectResult::Err(
-                    format!("std::str::from_utf8() failed, error: failed to convert on 'username_buf' (error: {}) at [{}, {}]",
-                    e, file!(), line!()));
-            }
-
-            // Read room name len.
-            let mut room_len_buf = vec![0u8; std::mem::size_of::<u8>()];
-            loop {
-                match self.read_from_socket(&mut room_len_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let room_len = u8::decode::<u8>(&room_len_buf);
-            if let Err(e) = room_len {
-                return ConnectResult::Err(format!(
-                    "u16::decode::<u8>() failed, error: {} at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                ));
-            }
-            let room_len = room_len.unwrap();
-
-            // Read room.
-            let mut room_buf = vec![0u8; room_len as usize];
-            loop {
-                match self.read_from_socket(&mut room_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let room_name = std::str::from_utf8(&room_buf);
-            if let Err(e) = room_name {
-                return ConnectResult::Err(
-                    format!("std::str::from_utf8() failed, error: failed to convert (error: {}) at [{}, {}]",
-                    e, file!(), line!()));
-            }
-
-            // Read ping.
-            let mut ping_buf = vec![0u8; std::mem::size_of::<u16>()];
-            loop {
-                match self.read_from_socket(&mut ping_buf) {
-                    IoResult::WouldBlock => {
-                        thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                        continue;
-                    }
-                    IoResult::Ok(_) => break,
-                    res => return ConnectResult::IoErr(res),
-                }
-            }
-            let ping_ms = u16::decode::<u16>(&ping_buf);
-            if let Err(e) = ping_ms {
-                return ConnectResult::Err(format!(
-                    "u16::decode::<u16>() failed, error: {}, at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                ));
-            }
-            let ping_ms = ping_ms.unwrap();
-
-            info_sender
-                .send(ConnectInfo::UserInfo(
-                    UserInfo::new(String::from(username.unwrap())),
-                    String::from(room_name.unwrap()),
-                    ping_ms,
-                ))
-                .unwrap();
         }
 
         info_sender.send(ConnectInfo::End).unwrap(); // End.
@@ -1154,187 +903,5 @@ impl UserTcpService {
         }
 
         Ok(())
-    }
-    fn read_u16_and_string_from_socket(&mut self) -> Result<String, IoResult> {
-        let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
-        loop {
-            match self.read_from_socket(&mut len_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                IoResult::FIN => return Err(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return Err(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-            };
-        }
-
-        let len = u16::decode::<u16>(&len_buf);
-        if let Err(e) = len {
-            return Err(IoResult::Err(format!(
-                "u16::decode::<u16>() failed, error: failed to decode (error: {}) at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            )));
-        }
-        let len = len.unwrap();
-
-        let mut string_buf = vec![0u8; len as usize];
-        loop {
-            match self.read_from_socket(&mut string_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                IoResult::FIN => return Err(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return Err(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-            };
-        }
-
-        let string = String::from_utf8(string_buf);
-        if let Err(e) = string {
-            return Err(IoResult::Err(format!(
-                "String::from_utf8() failed, error: failed to convert (error: {}) at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            )));
-        }
-
-        Ok(string.unwrap())
-    }
-    fn read_u16_and_vec_from_socket(&mut self) -> Result<Vec<u8>, IoResult> {
-        let mut len_buf = vec![0u8; std::mem::size_of::<u16>()];
-        loop {
-            match self.read_from_socket(&mut len_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                IoResult::FIN => return Err(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return Err(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-            };
-        }
-
-        let len = u16::decode::<u16>(&len_buf);
-        if let Err(e) = len {
-            return Err(IoResult::Err(format!(
-                "u16::decode::<u16>() failed, error: failed to decode (error: {}) at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            )));
-        }
-        let len = len.unwrap();
-
-        let mut vec_buf = vec![0u8; len as usize];
-        loop {
-            match self.read_from_socket(&mut vec_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                IoResult::FIN => return Err(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return Err(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-            };
-        }
-
-        Ok(vec_buf)
-    }
-    fn read_u8_and_string_from_socket(&mut self) -> Result<String, IoResult> {
-        let mut len_buf = vec![0u8; std::mem::size_of::<u8>()];
-        loop {
-            match self.read_from_socket(&mut len_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                IoResult::FIN => return Err(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return Err(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-            };
-        }
-
-        let len = u8::decode::<u8>(&len_buf);
-        if let Err(e) = len {
-            return Err(IoResult::Err(format!(
-                "u16::decode::<u8>() failed, error: failed to decode (error: {}) at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            )));
-        }
-        let len = len.unwrap();
-
-        let mut string_buf = vec![0u8; len as usize];
-        loop {
-            match self.read_from_socket(&mut string_buf) {
-                IoResult::WouldBlock => {
-                    thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
-                    continue;
-                }
-                IoResult::Ok(_) => break,
-                IoResult::FIN => return Err(IoResult::FIN),
-                IoResult::Err(msg) => {
-                    return Err(IoResult::Err(format!(
-                        "{} at [{}, {}]",
-                        msg,
-                        file!(),
-                        line!()
-                    )));
-                }
-            };
-        }
-
-        let string = String::from_utf8(string_buf);
-        if let Err(e) = string {
-            return Err(IoResult::Err(format!(
-                "String::from_utf8() failed, error: failed to convert (error: {}) at [{}, {}]",
-                e,
-                file!(),
-                line!()
-            )));
-        }
-
-        Ok(string.unwrap())
     }
 }
