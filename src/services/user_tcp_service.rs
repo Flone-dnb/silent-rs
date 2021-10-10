@@ -528,68 +528,37 @@ impl UserTcpService {
     pub fn send_user_text_message(&mut self, message: String) -> HandleMessageResult {
         if self.tcp_socket.is_none() {
             return HandleMessageResult::OtherErr(format!(
-                "UserTcpService::send_user_text_message() failed, error: tcp_socket was None at [{}, {}]", file!(), line!()
-            ));
-        }
-
-        // Send data:
-        // (u16) - data ID (user message)
-        // (u16) - username.len()
-        // (size) - username
-        // (u16) - message (encrypted).len()
-        // (size) - message (encrypted)
-
-        // Prepare data ID buffer.
-        let data_id = ClientMessageTcp::UserMessage.to_u16();
-        if data_id.is_none() {
-            return HandleMessageResult::OtherErr(format!(
-                "ClientMessage::UserMessage.to_u16() failed at [{}, {}]",
+                "tcp_socket was None at [{}, {}]",
                 file!(),
                 line!()
             ));
         }
-        let data_id = data_id.unwrap();
-        let data_id_buf = u16::encode::<u16>(&data_id);
-        if let Err(e) = data_id_buf {
+
+        let client_message_packet = ClientTcpMessage::UserMessage { message };
+
+        // Serialize packet.
+        let binary_client_message_packet = bincode::serialize(&client_message_packet);
+        if let Err(e) = binary_client_message_packet {
             return HandleMessageResult::OtherErr(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                data_id,
+                "bincode::serialize failed, error: {} at [{}, {}]",
                 e,
                 file!(),
                 line!()
             ));
         }
-        let mut data_id_buf = data_id_buf.unwrap();
+        let binary_client_message_packet = binary_client_message_packet.unwrap();
 
-        // Prepare username len buffer.
-        let username_len = self.user_info.username.len() as u16;
-        let username_len_buf = u16::encode::<u16>(&username_len);
-        if let Err(e) = username_len_buf {
-            return HandleMessageResult::OtherErr(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                username_len,
-                e,
-                file!(),
-                line!()
-            ));
-        }
-        let mut username_len_buf = username_len_buf.unwrap();
-
-        // Prepare username buffer.
-        let mut username_buf = Vec::from(self.user_info.username.as_bytes());
-
-        // Encrypt message.
+        // Encrypt packet.
         type Aes128Ecb = Ecb<Aes128, Pkcs7>;
         let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
-        let mut encrypted_message = cipher.encrypt_vec(message.as_bytes());
+        let mut encrypted_message_packet = cipher.encrypt_vec(&binary_client_message_packet);
 
-        // Prepare encrypted message len buffer.
-        let encrypted_message_len = encrypted_message.len() as u16;
-        let encrypted_message_len_buf = u16::encode::<u16>(&encrypted_message_len);
+        // Prepare encrypted packet len buffer.
+        let encrypted_message_len = encrypted_message_packet.len() as u16;
+        let encrypted_message_len_buf = bincode::serialize(&encrypted_message_len);
         if let Err(e) = encrypted_message_len_buf {
             return HandleMessageResult::OtherErr(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                encrypted_message_len,
+                "bincode::serialize failed, error: {} at [{}, {}]",
                 e,
                 file!(),
                 line!()
@@ -599,11 +568,8 @@ impl UserTcpService {
 
         // Merge all to one buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
-        out_buffer.append(&mut data_id_buf);
-        out_buffer.append(&mut username_len_buf);
-        out_buffer.append(&mut username_buf);
         out_buffer.append(&mut encrypted_message_len_buf);
-        out_buffer.append(&mut encrypted_message);
+        out_buffer.append(&mut encrypted_message_packet);
 
         // Send to server.
         loop {
