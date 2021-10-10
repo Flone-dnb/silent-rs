@@ -95,6 +95,7 @@ pub enum ServerTcpMessage {
 #[derive(Serialize, Deserialize)]
 pub enum ClientTcpMessage {
     UserMessage { message: String },
+    KeepAliveCheck,
 }
 
 // ----------------------------------------------------------------------------

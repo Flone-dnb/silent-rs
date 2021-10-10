@@ -2,9 +2,9 @@
 use aes::Aes128;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
-use bytevec::{ByteDecodable, ByteEncodable};
+use bytevec::ByteEncodable;
 use druid::{ExtEventSink, Selector, Target};
-use num_bigint::{BigUint, RandomBits, ToBigUint};
+use num_bigint::{BigUint, RandomBits};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
@@ -907,40 +907,52 @@ impl UserTcpService {
         ConnectResult::Ok
     }
     fn send_keep_alive_check(&mut self) -> Result<(), IoResult> {
-        // Prepare data ID buffer.
-        let data_id = ClientMessageTcp::KeepAliveCheck.to_u16();
-        if data_id.is_none() {
+        let client_packet = ClientTcpMessage::KeepAliveCheck;
+
+        // Serialize packet.
+        let binary_client_packet = bincode::serialize(&client_packet);
+        if let Err(e) = binary_client_packet {
             return Err(IoResult::Err(format!(
-                "ClientMessage::KeepAliveCheck.to_u16() failed at [{}, {}]",
-                file!(),
-                line!()
-            )));
-        }
-        let data_id = data_id.unwrap();
-        let data_id_buf = u16::encode::<u16>(&data_id);
-        if let Err(e) = data_id_buf {
-            return Err(IoResult::Err(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                data_id,
+                "bincode::serialize failed, error: {} at [{}, {}]",
                 e,
                 file!(),
                 line!()
             )));
         }
-        let mut data_id_buf = data_id_buf.unwrap();
+        let binary_client_packet = binary_client_packet.unwrap();
 
+        // Encrypt packet.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypted_packet = cipher.encrypt_vec(&binary_client_packet);
+
+        // Prepare encrypted packet len buffer.
+        let encrypted_packet_len = encrypted_packet.len() as u16;
+        let encrypted_packet_len_buf = bincode::serialize(&encrypted_packet_len);
+        if let Err(e) = encrypted_packet_len_buf {
+            return Err(IoResult::Err(format!(
+                "bincode::serialize failed, error: {} at [{}, {}]",
+                e,
+                file!(),
+                line!()
+            )));
+        }
+        let mut encrypted_packet_len_buf = encrypted_packet_len_buf.unwrap();
+
+        // Merge all to one buffer.
+        let mut out_buffer: Vec<u8> = Vec::new();
+        out_buffer.append(&mut encrypted_packet_len_buf);
+        out_buffer.append(&mut encrypted_packet);
+
+        // Send to server.
         loop {
-            match self.write_to_socket(&mut data_id_buf) {
+            match self.write_to_socket(&mut out_buffer) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
                 }
-                IoResult::Ok(_) => {
-                    break;
-                }
-                res => {
-                    return Err(res);
-                }
+                IoResult::Ok(_bytes) => break,
+                res => return Err(res),
             }
         }
 
