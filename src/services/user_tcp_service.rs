@@ -409,9 +409,29 @@ impl UserTcpService {
 
         // Calculate the secret key.
         let secret_key = a_open_big.modpow(&b, &p);
-        let secret_key_str = secret_key.to_str_radix(10);
+        let mut secret_key_str = secret_key.to_str_radix(10);
 
-        Ok(Vec::from(&secret_key_str[0..16]))
+        let key_length = 16;
+
+        if secret_key_str.len() < key_length {
+            if secret_key_str.is_empty() {
+                return Err(HandleMessageResult::OtherErr(format!(
+                    "generated secret key is empty, at [{}, {}].",
+                    file!(),
+                    line!()
+                )));
+            }
+
+            loop {
+                secret_key_str += &secret_key_str.clone();
+
+                if secret_key_str.len() >= key_length {
+                    break;
+                }
+            }
+        }
+
+        Ok(Vec::from(&secret_key_str[0..key_length]))
     }
     pub fn enter_room(&mut self, room: &str) -> HandleMessageResult {
         if self.tcp_socket.is_none() {
