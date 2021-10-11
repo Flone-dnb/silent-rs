@@ -11,6 +11,7 @@ use std::time::Duration;
 
 // Custom.
 use super::tcp_packets::*;
+use super::udp_packets::*;
 use crate::global_params::*;
 use crate::services::audio_service::audio_service::*;
 use crate::services::user_tcp_service::*;
@@ -596,7 +597,7 @@ impl NetService {
         }
 
         loop {
-            let mut in_buf = vec![0u8; IN_UDP_BUFFER_SIZE];
+            let mut packet_size_buf = vec![0u8; std::mem::size_of::<u16>()];
             let mut _peek_len = 0usize;
 
             loop {
@@ -605,14 +606,11 @@ impl NetService {
                     _res = user_udp_service
                         .lock()
                         .unwrap()
-                        .peek(&udp_socket, &mut in_buf);
+                        .peek(&udp_socket, &mut packet_size_buf);
                 }
                 match _res {
-                    Ok(n) => {
-                        if n > 0 {
-                            _peek_len = n;
-                            break;
-                        }
+                    Ok(_bytes) => {
+                        break;
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(INTERVAL_UDP_MESSAGE_MS));
@@ -623,7 +621,7 @@ impl NetService {
                             .submit_command(
                                 NETWORK_SERVICE_SYSTEM_IO_ERROR,
                                 format!(
-                                    "udp_socket.peek_from() failed, error: {}, at [{}, {}]",
+                                    "udp_socket.peek() failed, error: {}, at [{}, {}]",
                                     e,
                                     file!(),
                                     line!()
@@ -636,48 +634,23 @@ impl NetService {
                 }
             }
 
-            // there is some data, receive it
-            {
-                // this might sleep a little (inside of recv())
-                match user_udp_service
-                    .lock()
-                    .unwrap()
-                    .recv(&udp_socket, &mut in_buf, _peek_len)
-                {
-                    Ok(()) => {}
-                    Err(msg) => {
-                        event_sink
-                            .submit_command(
-                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
-                                format!("{}, at [{}, {}]", msg, file!(), line!()),
-                                Target::Auto,
-                            )
-                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
-                        return;
-                    }
-                }
-            }
-
-            // handle received data
-            {
-                // this might sleep a little (inside of handle_message())
-                match user_udp_service.lock().unwrap().handle_message(
-                    &udp_socket,
-                    &mut in_buf,
-                    event_sink.clone(),
-                    audio_service.clone(),
-                ) {
-                    Ok(()) => {}
-                    Err(msg) => {
-                        event_sink
-                            .submit_command(
-                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
-                                format!("{}, at [{}, {}]", msg, file!(), line!()),
-                                Target::Auto,
-                            )
-                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
-                        return;
-                    }
+            // Handle message.
+            // this might sleep a little (inside of handle_message())
+            match user_udp_service.lock().unwrap().handle_message(
+                &udp_socket,
+                event_sink.clone(),
+                audio_service.clone(),
+            ) {
+                Ok(()) => {}
+                Err(msg) => {
+                    event_sink
+                        .submit_command(
+                            NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                            format!("{}, at [{}, {}]", msg, file!(), line!()),
+                            Target::Auto,
+                        )
+                        .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
+                    return;
                 }
             }
         }
