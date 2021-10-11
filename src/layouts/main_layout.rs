@@ -336,7 +336,9 @@ impl MainLayout {
                 }
             }
 
-            if data.main_layout.message.chars().count() > MAX_MESSAGE_SIZE {
+            // use '.len' instead of '.chars().count()'
+            // because we only care about byte length.
+            if data.main_layout.message.len() > MAX_MESSAGE_SIZE {
                 data.main_layout.add_system_message(format!(
                     "{} ({} {} {})!",
                     data.localization
