@@ -2,12 +2,10 @@
 use aes::Aes128;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
-use bytevec::ByteEncodable;
 use druid::{ExtEventSink, Selector, Target};
 use num_bigint::{BigUint, RandomBits};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
-use num_traits::ToPrimitive;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
@@ -440,80 +438,46 @@ impl UserTcpService {
             ));
         }
 
-        // Send data:
-        // (u16) - data ID (enter room)
-        // (u16) - username.len()
-        // (size) - username
-        // (u8) - room.len()
-        // (size) - room name
+        let client_packet = ClientTcpMessage::UserEnterRoom {
+            room_name: String::from(room),
+        };
 
-        // Prepare data ID buffer.
-        let data_id = ClientMessageTcp::EnterRoom.to_u16();
-        if data_id.is_none() {
+        // Serialize packet.
+        let binary_client_packet = bincode::serialize(&client_packet);
+        if let Err(e) = binary_client_packet {
             return HandleMessageResult::OtherErr(format!(
-                "ClientMessage::EnterRoom.to_u16() failed at [{}, {}]",
-                file!(),
-                line!()
-            ));
-        }
-        let data_id = data_id.unwrap();
-        let data_id_buf = u16::encode::<u16>(&data_id);
-        if let Err(e) = data_id_buf {
-            return HandleMessageResult::OtherErr(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                data_id,
+                "bincode::serialize failed, error: {} at [{}, {}]",
                 e,
                 file!(),
                 line!()
             ));
         }
-        let mut data_id_buf = data_id_buf.unwrap();
+        let binary_client_packet = binary_client_packet.unwrap();
 
-        // Prepare username len buffer.
-        let username_len = self.user_info.username.len() as u16;
-        let username_len_buf = u16::encode::<u16>(&username_len);
-        if let Err(e) = username_len_buf {
+        // Encrypt packet.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypted_packet = cipher.encrypt_vec(&binary_client_packet);
+
+        // Prepare encrypted packet len buffer.
+        let encrypted_len = encrypted_packet.len() as u16;
+        let encrypted_len_buf = bincode::serialize(&encrypted_len);
+        if let Err(e) = encrypted_len_buf {
             return HandleMessageResult::OtherErr(format!(
-                "u16::encode::<u16>() failed on value {}, error: {} at [{}, {}]",
-                username_len,
+                "bincode::serialize failed, error: {} at [{}, {}]",
                 e,
                 file!(),
                 line!()
             ));
         }
-        let mut username_len_buf = username_len_buf.unwrap();
-
-        // Prepare username buffer.
-        let mut username_buf = Vec::from(self.user_info.username.as_bytes());
-
-        // Prepare room name len buffer.
-        let room_name_len = room.len() as u8;
-        let room_len_buf = u8::encode::<u8>(&room_name_len);
-        if let Err(e) = room_len_buf {
-            return HandleMessageResult::OtherErr(format!(
-                "u16::encode::<u8>() failed on value {}, error: {} at [{}, {}]",
-                username_len,
-                e,
-                file!(),
-                line!()
-            ));
-        }
-        let mut room_len_buf = room_len_buf.unwrap();
-
-        // Prepare username buffer.
-        let mut room_buf = Vec::from(room.as_bytes());
+        let mut send_buffer = encrypted_len_buf.unwrap();
 
         // Merge all to one buffer.
-        let mut out_buffer: Vec<u8> = Vec::new();
-        out_buffer.append(&mut data_id_buf);
-        out_buffer.append(&mut username_len_buf);
-        out_buffer.append(&mut username_buf);
-        out_buffer.append(&mut room_len_buf);
-        out_buffer.append(&mut room_buf);
+        send_buffer.append(&mut encrypted_packet);
 
         // Send to server.
         loop {
-            match self.write_to_socket(&mut out_buffer) {
+            match self.write_to_socket(&mut send_buffer) {
                 IoResult::WouldBlock => {
                     thread::sleep(Duration::from_millis(INTERVAL_TCP_MESSAGE_MS));
                     continue;
@@ -764,11 +728,11 @@ impl UserTcpService {
         &mut self,
         info_sender: std::sync::mpsc::Sender<ConnectInfo>,
     ) -> ConnectResult {
-        let packet = ClientConnectPacket::new(
-            NETWORK_PROTOCOL_VERSION,
-            self.user_info.username.clone(),
-            self.server_password.clone(),
-        );
+        let packet = ClientConnectPacket {
+            net_protocol_version: NETWORK_PROTOCOL_VERSION,
+            username: self.user_info.username.clone(),
+            password: self.server_password.clone(),
+        };
 
         let binary_packet = bincode::serialize(&packet).unwrap();
 

@@ -25,15 +25,6 @@ pub struct ClientConnectPacket {
     pub username: String,
     pub password: String,
 }
-impl ClientConnectPacket {
-    pub fn new(net_protocol_version: u64, username: String, password: String) -> Self {
-        Self {
-            net_protocol_version,
-            username,
-            password,
-        }
-    }
-}
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
@@ -54,15 +45,6 @@ pub struct RoomNetInfo {
 pub struct UserNetInfo {
     pub username: String,
     pub ping: u16,
-}
-impl ServerTcpConnectPacket {
-    pub fn new(answer: ConnectServerAnswer) -> Self {
-        Self {
-            answer,
-            correct_net_protocol: None,
-            connected_info: None,
-        }
-    }
 }
 
 // ----------------------------------------------------------------------------
@@ -95,6 +77,7 @@ pub enum ServerTcpMessage {
 #[derive(Serialize, Deserialize)]
 pub enum ClientTcpMessage {
     UserMessage { message: String },
+    UserEnterRoom { room_name: String },
     KeepAliveCheck,
 }
 
