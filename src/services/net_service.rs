@@ -10,6 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 // Custom.
+use super::tcp_packets::*;
 use crate::global_params::*;
 use crate::services::audio_service::audio_service::*;
 use crate::services::user_tcp_service::*;
@@ -422,6 +423,20 @@ impl NetService {
                     return;
                 }
                 let message_size = message_size.unwrap();
+
+                if message_size > TCP_PACKET_MAX_SIZE {
+                    event_sink
+                        .submit_command(
+                            NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                            format!(
+                        "incoming packet size exceeds the maximum size ({}/{}), at [{}, {}].\nClosing connection...",
+                        message_size, TCP_PACKET_MAX_SIZE, file!(), line!()
+                    ),
+                            Target::Auto,
+                        )
+                        .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
+                    return;
+                }
 
                 // Handle message.
                 {
