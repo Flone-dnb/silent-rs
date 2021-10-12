@@ -2,12 +2,11 @@
 use aes::Aes128;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
-use bytevec::{ByteDecodable, ByteEncodable};
+use bytevec::ByteEncodable;
 use druid::{ExtEventSink, Selector, Target};
 use num_derive::FromPrimitive;
 use num_derive::ToPrimitive;
 use num_traits::cast::ToPrimitive;
-use num_traits::FromPrimitive;
 
 // Std.
 use std::io::ErrorKind;
@@ -292,14 +291,7 @@ impl UserUdpService {
         match packet_buf {
             ServerUdpMessage::PingCheck => {
                 // Send it back.
-                let packet_size: u16 = recv_buffer.len() as u16;
-                let mut packet_size = bincode::serialize(&packet_size).unwrap();
-
-                packet_size.append(&mut recv_buffer);
-
-                if let Err(msg) = self.send(udp_socket, &packet_size) {
-                    return Err(format!("{}, at [{}, {}]", msg, file!(), line!()));
-                }
+                return self.answer_ping(udp_socket);
             }
             ServerUdpMessage::UserPing { username, ping_ms } => {
                 event_sink
@@ -404,6 +396,37 @@ impl UserUdpService {
         //         );
         //     }
         // }
+
+        Ok(())
+    }
+    fn answer_ping(&self, udp_socket: &UdpSocket) -> Result<(), String> {
+        let packet = ClientUdpMessage::PingCheck {};
+
+        let binary_packet = bincode::serialize(&packet).unwrap();
+        if binary_packet.len() + std::mem::size_of::<u16>() > UDP_PACKET_MAX_SIZE as usize {
+            // using std::mem::size_of::<u16>() as packet size
+            panic!(
+                "Binary packet size + size_of::<u16> exceeded the limit ({}) at [{}, {}].",
+                UDP_PACKET_MAX_SIZE,
+                file!(),
+                line!()
+            );
+        }
+
+        // Encrypt.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypt_packet = cipher.encrypt_vec(&binary_packet);
+
+        let packet_size: u16 = encrypt_packet.len() as u16;
+        let mut packet_size = bincode::serialize(&packet_size).unwrap();
+
+        packet_size.append(&mut encrypt_packet);
+
+        // Send this buffer.
+        if let Err(msg) = self.send(udp_socket, &packet_size) {
+            return Err(format!("{}, at [{}, {}]", msg, file!(), line!()));
+        }
 
         Ok(())
     }
