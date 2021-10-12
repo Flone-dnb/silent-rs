@@ -336,6 +336,10 @@ impl MainLayout {
                 }
             }
 
+            if data.main_layout.message.len() == 0 {
+                return;
+            }
+
             // use '.len' instead of '.chars().count()'
             // because we only care about byte length.
             if data.main_layout.message.len() > MAX_MESSAGE_SIZE {
