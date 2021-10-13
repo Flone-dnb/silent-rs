@@ -21,9 +21,10 @@ use crate::services::net_service::*;
 const INTERVAL_PROCESS_VOICE_MS: i32 = 10;
 const INTERVAL_CHECK_PUSH_TO_TALK_MS: u64 = 5;
 const SAMPLE_RATE: u32 = 34000;
-// if changing probably also need to change MIN_CHUNKS_TO_START_PLAY and MIN_CHUNKS_TO_RECORD
+// if changing SAMPLES_IN_CHUNK you probably also need to change MIN_CHUNKS_TO_START_PLAY, MIN_CHUNKS_TO_RECORD and CHUNKS_TO_RECORD_AFTER_STOP
 const SAMPLES_IN_CHUNK: usize = 679; // ~20 ms with 34000 sample rate
 const MIN_CHUNKS_TO_RECORD: usize = 6;
+const CHUNKS_TO_RECORD_AFTER_STOP: usize = 5; // after the push-to-talk button is unpressed, we will record N more chunks
 const MIN_CHUNKS_TO_START_PLAY: usize = 3;
 const INTERVAL_WAIT_FOR_NEW_CHUNKS_MS: u64 = 10;
 
@@ -332,7 +333,10 @@ impl AudioService {
 
                 let mut recorded_chunk_count = 0usize;
                 let mut samples: Vec<i16> = Vec::new();
-                let mut stop = false;
+                let mut end_recording = false;
+                let mut push_to_talk_unpressed = false;
+                let mut stopped_driver = false;
+                let mut chunk_count_to_record_after_unpress = CHUNKS_TO_RECORD_AFTER_STOP;
 
                 loop {
                     let res = sample_receiver.recv();
@@ -360,21 +364,22 @@ impl AudioService {
 
                         if recorded_chunk_count >= MIN_CHUNKS_TO_RECORD {
                             // see if we need to stop
-                            if stop || is_key_pressed(push_to_talk_key) == false {
-                                if stop == false {
+                            if push_to_talk_unpressed || is_key_pressed(push_to_talk_key) == false {
+                                push_to_talk_unpressed = true;
+
+                                if chunk_count_to_record_after_unpress == 0
+                                    && stopped_driver == false
+                                {
                                     driver.stop();
-                                    stop = true;
+                                    stopped_driver = true;
+                                } else if chunk_count_to_record_after_unpress != 0 {
+                                    chunk_count_to_record_after_unpress -= 1;
+                                    break; // go record more
                                 }
+
                                 if samples.len() < SAMPLES_IN_CHUNK {
-                                    // see if there are samples ready
-                                    if let Ok(mut new_samples) = sample_receiver.try_recv() {
-                                        samples.append(&mut new_samples);
-                                        if samples.len() < SAMPLES_IN_CHUNK {
-                                            break; // stop
-                                        } // else go send last samples
-                                    } else {
-                                        break; // stop
-                                    }
+                                    end_recording = true;
+                                    break; // stop
                                 } // else go send last samples
                             }
                         } else {
@@ -382,7 +387,7 @@ impl AudioService {
                         }
                     }
 
-                    if stop {
+                    if end_recording {
                         break;
                     }
                 }
