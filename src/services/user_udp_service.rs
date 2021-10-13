@@ -2,11 +2,7 @@
 use aes::Aes128;
 use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
-use bytevec::ByteEncodable;
 use druid::{ExtEventSink, Selector, Target};
-use num_derive::FromPrimitive;
-use num_derive::ToPrimitive;
-use num_traits::cast::ToPrimitive;
 
 // Std.
 use std::io::ErrorKind;
@@ -28,19 +24,6 @@ pub struct UserPingInfo {
     pub username: String,
     pub ping_ms: u16,
     pub try_again_count: u8,
-}
-
-#[derive(FromPrimitive, ToPrimitive, PartialEq)]
-pub enum ServerMessageUdp {
-    UserPing = 0,
-    PingCheck = 1,
-    VoiceMessage = 2,
-}
-
-#[derive(FromPrimitive, ToPrimitive, PartialEq)]
-pub enum ClientMessageUdp {
-    VoicePacket = 0,
-    PingCheck = 1,
 }
 
 #[derive(Debug)]
@@ -65,64 +48,34 @@ impl UserUdpService {
         self.username = username;
     }
     pub fn send_voice_message(&mut self, voice_chunk: Vec<i16>) {
-        // prepare voice packet:
-        // (u8) - packet type (ClientMessageUdp::VoicePacket)
-        // (u16) - voice data (encrypted) size in bytes
-        // (size) - voice data (encrypted)
+        let packet = ClientUdpMessage::VoiceMessage {
+            samples: voice_chunk,
+        };
 
-        let packet_id = ClientMessageUdp::VoicePacket.to_u8().unwrap();
-
-        // Convert voice_chunk from Vec<i16> to Vec<u8>
-        let mut voice_data: Vec<u8> = Vec::new();
-        for val in voice_chunk.into_iter() {
-            let mut _val_u: u16 = 0;
-            unsafe {
-                _val_u = std::mem::transmute::<i16, u16>(val);
-            }
-            let res = u16::encode::<u16>(&_val_u);
-            if let Err(e) = res {
-                panic!(
-                    "An error occurred, error: {}, at [{}, {}]",
-                    e,
-                    file!(),
-                    line!()
-                );
-            }
-
-            let mut vec = res.unwrap();
-
-            voice_data.append(&mut vec);
-        }
-
-        // Encrypt voice data.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
-        let mut encrypted_message = cipher.encrypt_vec(&voice_data);
-
-        // voice data (encrypted) len
-        let encrypted_voice_data_len: u16 = encrypted_message.len() as u16;
-
-        let encrypted_voice_data_len_buf = u16::encode::<u16>(&encrypted_voice_data_len);
-        if let Err(e) = encrypted_voice_data_len_buf {
+        let binary_packet = bincode::serialize(&packet).unwrap();
+        if binary_packet.len() + std::mem::size_of::<u16>() > UDP_PACKET_MAX_SIZE as usize {
+            // using std::mem::size_of::<u16>() as packet size
             panic!(
-                "An error occurred, error: {}, at [{}, {}]",
-                e,
+                "Binary packet size + size_of::<u16> exceeded the limit ({}) at [{}, {}].",
+                UDP_PACKET_MAX_SIZE,
                 file!(),
                 line!()
             );
         }
-        let mut encrypted_voice_data_len_buf = encrypted_voice_data_len_buf.unwrap();
 
-        let mut out_buf: Vec<u8> = Vec::new();
-        out_buf.push(packet_id);
-        out_buf.append(&mut encrypted_voice_data_len_buf);
-        out_buf.append(&mut encrypted_message);
+        // Encrypt.
+        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
+        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut encrypt_packet = cipher.encrypt_vec(&binary_packet);
 
-        match self.send(self.udp_socket_copy.as_ref().unwrap(), &out_buf) {
-            Err(msg) => {
-                panic!("{}, at [{}, {}]", msg, file!(), line!());
-            }
-            _ => {}
+        let packet_size: u16 = encrypt_packet.len() as u16;
+        let mut packet_size = bincode::serialize(&packet_size).unwrap();
+
+        packet_size.append(&mut encrypt_packet);
+
+        // Send this buffer.
+        if let Err(msg) = self.send(&self.udp_socket_copy.as_ref().unwrap(), &packet_size) {
+            print!("{}, at [{}, {}]", msg, file!(), line!());
         }
     }
     pub fn connect(&mut self, udp_socket: &UdpSocket) -> Result<(), String> {
@@ -306,96 +259,13 @@ impl UserUdpService {
                     )
                     .expect("failed to submit USER_UDP_SERVICE_UPDATE_USER_PING command");
             }
+            ServerUdpMessage::VoiceMessage { username, samples } => {
+                audio_service
+                    .lock()
+                    .unwrap()
+                    .add_user_voice_chunk(username, samples, event_sink);
+            }
         }
-
-        // match FromPrimitive::from_u8(buf[0]) {
-        //     Some(ServerMessageUdp::VoiceMessage) => {
-        //         // Packet structure:
-        //         // (u8) - id (ServerMessageUdp::VoiceMessage)
-        //         // (u8) - username len
-        //         // (size) - username
-        //         // (u16) - voice data (encrypted) len
-        //         // (size) - voice data (encrypted)
-
-        //         let username_len = buf[1];
-        //         let mut _read_i = 2usize;
-        //         let username = String::from_utf8(Vec::from(&buf[2..2 + username_len as usize]));
-        //         _read_i += username_len as usize;
-        //         if let Err(e) = username {
-        //             return Err(format!(
-        //                 "String::from_utf8() failed, error: {}, at [{}, {}]",
-        //                 e,
-        //                 file!(),
-        //                 line!()
-        //             ));
-        //         }
-        //         let username = username.unwrap();
-
-        //         // Read voice data (encrypted) len.
-        //         let encrypted_voice_data_len_buf =
-        //             &buf[_read_i.._read_i + std::mem::size_of::<u16>()];
-        //         _read_i += std::mem::size_of::<u16>();
-
-        //         let encrypted_voice_data_len = u16::decode::<u16>(&encrypted_voice_data_len_buf);
-        //         if let Err(e) = encrypted_voice_data_len {
-        //             return Err(format!(
-        //                 "u16::decode::<u16>() failed, error: {}, at [{}, {}]",
-        //                 e,
-        //                 file!(),
-        //                 line!()
-        //             ));
-        //         }
-        //         let encrypted_voice_data_len = encrypted_voice_data_len.unwrap();
-
-        //         // Read voice data (encrypted)
-        //         let encrypted_voice_data =
-        //             &buf[_read_i.._read_i + encrypted_voice_data_len as usize];
-
-        //         // Decrypt voice data.
-        //         type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        //         let cipher =
-        //             Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
-        //         let decrypted_message = cipher.decrypt_vec(encrypted_voice_data);
-        //         if let Err(e) = decrypted_message {
-        //             return Err(format!(
-        //                 "cipher.decrypt_vec() failed, error: {}, at [{}, {}]",
-        //                 e,
-        //                 file!(),
-        //                 line!()
-        //             ));
-        //         }
-        //         let user_voice_message = decrypted_message.unwrap();
-
-        //         let mut voice_data_vec: Vec<i16> = Vec::new();
-
-        //         for i in (0..user_voice_message.len()).step_by(std::mem::size_of::<i16>()) {
-        //             let val_u =
-        //                 u16::decode::<u16>(&user_voice_message[i..i + std::mem::size_of::<i16>()]);
-        //             if let Err(e) = val_u {
-        //                 return Err(format!(
-        //                     "u16::decode::<u16>() failed, error: {}, at [{}, {}]",
-        //                     e,
-        //                     file!(),
-        //                     line!()
-        //                 ));
-        //             }
-        //             let val_u = val_u.unwrap();
-
-        //             let mut _val: i16 = 0;
-        //             unsafe {
-        //                 _val = std::mem::transmute::<u16, i16>(val_u);
-        //             }
-
-        //             voice_data_vec.push(_val);
-        //         }
-
-        //         audio_service.lock().unwrap().add_user_voice_chunk(
-        //             username,
-        //             voice_data_vec,
-        //             event_sink,
-        //         );
-        //     }
-        // }
 
         Ok(())
     }

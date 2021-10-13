@@ -404,7 +404,7 @@ impl ConnectLayout {
         loop {
             let received = rx.recv();
             if received.is_err() {
-                // start() already finished probably because of wrong password wait
+                // start() already finished probably because of the wrong password or something else
                 break;
             }
             let received = received.unwrap();

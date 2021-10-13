@@ -2,8 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::user_tcp_service::ConnectServerAnswer;
-
 // there's no such thing as a packet in TCP (it's all just a stream)
 // but the only thing that we receive unencrypted is the data size
 // thus we check if this data has the size that we expect to handle
@@ -14,6 +12,19 @@ pub const TCP_PACKET_MAX_SIZE: u16 = 1400;
 // you can easily do this here (change this value) + in the client's tcp_packets.rs
 // that will be enough
 pub const TCP_CONNECT_ANSWER_PACKET_MAX_SIZE: u64 = std::u16::MAX as u64;
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+pub enum ConnectServerAnswer {
+    Ok = 0,
+    WrongVersion = 1,
+    UsernameTaken = 2,
+    WrongPassword = 3,
+    ServerIsFull = 4,
+}
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------

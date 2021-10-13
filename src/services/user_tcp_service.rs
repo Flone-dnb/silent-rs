@@ -4,10 +4,7 @@ use block_modes::block_padding::Pkcs7;
 use block_modes::{BlockMode, Ecb};
 use druid::{ExtEventSink, Selector, Target};
 use num_bigint::{BigUint, RandomBits};
-use num_derive::FromPrimitive;
-use num_derive::ToPrimitive;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 
 // Std.
 use std::io::prelude::*;
@@ -38,32 +35,6 @@ pub const USER_TCP_SERVICE_MOVE_USER_TO_ROOM: Selector<UserMoveInfo> =
 pub enum UserState {
     NotConnected,
     Connected,
-}
-
-#[derive(FromPrimitive, Serialize, Deserialize)]
-pub enum ConnectServerAnswer {
-    Ok = 0,
-    WrongVersion = 1,
-    UsernameTaken = 2,
-    WrongPassword = 3,
-    ServerIsFull = 4,
-}
-
-#[derive(FromPrimitive, ToPrimitive, PartialEq, Serialize, Deserialize)]
-pub enum ServerMessageTcp {
-    UserConnected = 0,
-    UserDisconnected = 1,
-    UserMessage = 2,
-    UserEntersRoom = 3,
-    KeepAliveCheck = 4,
-}
-
-#[derive(FromPrimitive, ToPrimitive, PartialEq)]
-pub enum ClientMessageTcp {
-    UserMessage = 0,
-    EnterRoom = 1,
-    KeepAliveCheck = 2,
-    TryConnect = 3,
 }
 
 pub struct UserMessageInfo {

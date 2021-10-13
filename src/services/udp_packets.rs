@@ -12,6 +12,7 @@ pub const UDP_PACKET_MAX_SIZE: u16 = 1430;
 pub enum ClientUdpMessage {
     Connect { username: String },
     PingCheck,
+    VoiceMessage { samples: Vec<i16> },
 }
 
 // ----------------------------------------------------------------------------
@@ -22,6 +23,7 @@ pub enum ClientUdpMessage {
 pub enum ServerUdpMessage {
     PingCheck,
     UserPing { username: String, ping_ms: u16 }, // ping check result
+    VoiceMessage { username: String, samples: Vec<i16> },
 }
 
 // ----------------------------------------------------------------------------
