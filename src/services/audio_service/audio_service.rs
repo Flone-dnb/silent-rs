@@ -88,6 +88,11 @@ impl AudioService {
         voice_data: Vec<i16>,
         event_sink: ExtEventSink,
     ) {
+        if voice_data.len() != 0 && voice_data.len() != SAMPLES_IN_CHUNK {
+            println!("SILENT_WARNING: received chunk of samples has incompatible size: expected {}, received {}. The client that's sending this voice message ({}) has an incompatible (probably modified) version.", SAMPLES_IN_CHUNK, voice_data.len(), username);
+            return;
+        }
+
         let users_voice_data_guard = self.users_voice_data.lock().unwrap();
 
         let mut found = false;
