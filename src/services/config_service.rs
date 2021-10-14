@@ -1,5 +1,4 @@
 // External.
-use bytevec::{ByteDecodable, ByteEncodable};
 use num_traits::cast::FromPrimitive;
 use num_traits::cast::ToPrimitive;
 #[cfg(target_os = "windows")]
@@ -77,7 +76,7 @@ impl UserConfig {
 
         // Write config version.
         let config_version = CONFIG_FILE_VERSION;
-        let buf = u64::encode::<u64>(&config_version);
+        let buf = bincode::serialize(&config_version);
         if let Err(e) = buf {
             return Err(format!(
                 "u64::encode::<u64>() failed, error: {} at [{}, {}]",
@@ -188,8 +187,8 @@ impl UserConfig {
         }
 
         // Write push-to-talk key.
-        let key = self.push_to_talk_button.to_u64().unwrap();
-        let buf = u64::encode::<u64>(&key);
+        let key: u64 = self.push_to_talk_button.to_u64().unwrap();
+        let buf = bincode::serialize(&key);
         if let Err(e) = buf {
             return Err(format!(
                 "u64::encode::<u64>() failed, error: {} at [{}, {}]",
@@ -369,7 +368,7 @@ impl UserConfig {
                 ));
             }
             // use it to handle old config versions...
-            let config_version = u64::decode::<u64>(&buf).unwrap();
+            let config_version = bincode::deserialize::<u64>(&buf).unwrap();
 
             // Read username len.
             let username_len = UserConfig::read_u16_from_file(&mut config_file);
@@ -479,7 +478,7 @@ impl UserConfig {
                     line!()
                 ));
             }
-            let key_code = u64::decode::<u64>(&buf).unwrap();
+            let key_code = bincode::deserialize::<u64>(&buf).unwrap();
             match FromPrimitive::from_u64(key_code) {
                 Some(v) => user_config.push_to_talk_button = v,
                 None => {
@@ -624,7 +623,7 @@ impl UserConfig {
                 line!()
             ));
         }
-        Ok(u16::decode::<u16>(&buf).unwrap())
+        Ok(bincode::deserialize::<u16>(&buf).unwrap())
     }
 
     fn read_string_from_file(file: &mut File, string_len: u16) -> Result<String, String> {
@@ -648,7 +647,7 @@ impl UserConfig {
     }
 
     fn write_u16_to_file(file: &mut File, val: u16) -> Result<(), String> {
-        let buf = u16::encode::<u16>(&val);
+        let buf = bincode::serialize(&val);
         if let Err(e) = buf {
             return Err(format!(
                 "u16::encode::<u16>() failed, error: {} at [{}, {}]",
