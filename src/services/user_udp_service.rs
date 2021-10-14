@@ -331,9 +331,27 @@ impl UserUdpService {
         Ok(())
     }
     pub fn peek(&self, udp_socket: &UdpSocket, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        #[cfg(target_os = "linux")]
         match udp_socket.peek(buf) {
             Ok(n) => {
                 return Ok(n);
+            }
+            Err(e) => return Err(e),
+        }
+        #[cfg(target_os = "windows")]
+        // windows returns error 10040 - WSAEMSGSIZE (https://docs.microsoft.com/en-us/troubleshoot/windows-server/networking/wsaemsgsize-error-10040-in-winsock-2)
+        // if the 'buf' is smaller than incoming packet
+        let mut bigger_buf = vec![0u8; UDP_PACKET_MAX_SIZE as usize];
+        match udp_socket.peek(&mut bigger_buf) {
+            Ok(n) => {
+                for i in 0..n {
+                    if i < buf.len() {
+                        buf[i] = bigger_buf[i];
+                    } else {
+                        break;
+                    }
+                }
+                return Ok(buf.len());
             }
             Err(e) => return Err(e),
         }
