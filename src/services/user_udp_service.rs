@@ -170,16 +170,7 @@ impl UserUdpService {
         }
 
         // OK. Send it back.
-        let packet_size: u16 = recv_buffer.len() as u16;
-        let mut packet_size = bincode::serialize(&packet_size).unwrap();
-
-        packet_size.append(&mut recv_buffer);
-
-        if let Err(msg) = self.send(udp_socket, &packet_size) {
-            return Err(format!("{}, at [{}, {}]", msg, file!(), line!()));
-        }
-
-        Ok(())
+        self.answer_ping(udp_socket)
     }
     pub fn handle_message(
         &mut self,
