@@ -15,6 +15,7 @@ pub const SPAM_PROTECTION_SEC: usize = 3; // (should be 'server value' + 1), can
 pub const PASSWORD_RETRY_DELAY_SEC: usize = 6; // (should be 'server value' + 1)
 pub const DEFAULT_ROOM_NAME: &str = "Lobby";
 pub const IV_LENGTH: usize = 16;
+pub const CMAC_TAG_LENGTH: usize = 16;
 
 pub const MAX_MESSAGES_ON_SCREEN: usize = 50;
 pub const DEFAULT_SERVER_PORT: u16 = 51337;
