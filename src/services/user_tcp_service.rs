@@ -1,10 +1,12 @@
 // External.
-use aes::Aes128;
+use aes::Aes256;
 use block_modes::block_padding::Pkcs7;
-use block_modes::{BlockMode, Ecb};
+use block_modes::{BlockMode, Cbc};
 use druid::{ExtEventSink, Selector, Target};
 use num_bigint::{BigUint, RandomBits};
-use rand::Rng;
+use rand::{Rng, RngCore};
+
+type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
 // Std.
 use std::io::prelude::*;
@@ -380,7 +382,7 @@ impl UserTcpService {
         let secret_key = a_open_big.modpow(&b, &p);
         let mut secret_key_str = secret_key.to_str_radix(10);
 
-        let key_length = 16;
+        let key_length = 32;
 
         if secret_key_str.len() < key_length {
             if secret_key_str.is_empty() {
@@ -426,12 +428,14 @@ impl UserTcpService {
         let binary_client_packet = binary_client_packet.unwrap();
 
         // Encrypt packet.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut rng = rand::thread_rng();
+        let mut iv = vec![0u8; IV_LENGTH];
+        rng.fill_bytes(&mut iv);
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let mut encrypted_packet = cipher.encrypt_vec(&binary_client_packet);
 
         // Prepare encrypted packet len buffer.
-        let encrypted_len = encrypted_packet.len() as u16;
+        let encrypted_len = (encrypted_packet.len() + IV_LENGTH) as u16;
         let encrypted_len_buf = bincode::serialize(&encrypted_len);
         if let Err(e) = encrypted_len_buf {
             return HandleMessageResult::OtherErr(format!(
@@ -444,6 +448,7 @@ impl UserTcpService {
         let mut send_buffer = encrypted_len_buf.unwrap();
 
         // Merge all to one buffer.
+        send_buffer.append(&mut iv);
         send_buffer.append(&mut encrypted_packet);
 
         // Send to server.
@@ -484,12 +489,14 @@ impl UserTcpService {
         let binary_client_message_packet = binary_client_message_packet.unwrap();
 
         // Encrypt packet.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut rng = rand::thread_rng();
+        let mut iv = vec![0u8; IV_LENGTH];
+        rng.fill_bytes(&mut iv);
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let mut encrypted_message_packet = cipher.encrypt_vec(&binary_client_message_packet);
 
         // Prepare encrypted packet len buffer.
-        let encrypted_message_len = encrypted_message_packet.len() as u16;
+        let encrypted_message_len = (encrypted_message_packet.len() + IV_LENGTH) as u16;
         let encrypted_message_len_buf = bincode::serialize(&encrypted_message_len);
         if let Err(e) = encrypted_message_len_buf {
             return HandleMessageResult::OtherErr(format!(
@@ -504,6 +511,7 @@ impl UserTcpService {
         // Merge all to one buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
         out_buffer.append(&mut encrypted_message_len_buf);
+        out_buffer.append(&mut iv);
         out_buffer.append(&mut encrypted_message_packet);
 
         // Send to server.
@@ -622,9 +630,19 @@ impl UserTcpService {
             }
         }
 
+        // Get IV.
+        if packet_buf.len() < IV_LENGTH {
+            return HandleMessageResult::IOError(IoResult::Err(format!(
+                "received data is too small, at [{}, {}].",
+                file!(),
+                line!()
+            )));
+        }
+        let iv = &packet_buf[..IV_LENGTH].to_vec();
+        packet_buf = packet_buf[IV_LENGTH..].to_vec();
+
         // Decrypt packet.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let binary_server_packet = cipher.decrypt_vec(&packet_buf);
         if let Err(e) = binary_server_packet {
             return HandleMessageResult::IOError(IoResult::Err(format!(
@@ -708,11 +726,15 @@ impl UserTcpService {
         let binary_packet = bincode::serialize(&packet).unwrap();
 
         // Encrypt binary packet.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut rng = rand::thread_rng();
+        let mut iv = vec![0u8; IV_LENGTH];
+        rng.fill_bytes(&mut iv);
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let mut encrypted_binary_packet = cipher.encrypt_vec(&binary_packet);
 
-        if encrypted_binary_packet.len() + std::mem::size_of::<u16>() > std::u16::MAX as usize {
+        if encrypted_binary_packet.len() + IV_LENGTH + std::mem::size_of::<u16>()
+            > std::u16::MAX as usize
+        {
             // should never happen
             // using std::mem::size_of::<u16>() as packet size
             panic!(
@@ -721,11 +743,12 @@ impl UserTcpService {
                 line!()
             );
         }
-        let packet_size: u16 = encrypted_binary_packet.len() as u16;
+        let packet_size: u16 = (encrypted_binary_packet.len() + IV_LENGTH) as u16;
         let mut packet_size = bincode::serialize(&packet_size).unwrap();
 
         let mut send_buffer: Vec<u8> = Vec::new();
         send_buffer.append(&mut packet_size);
+        send_buffer.append(&mut iv);
         send_buffer.append(&mut encrypted_binary_packet);
 
         // Send this buffer.
@@ -772,8 +795,19 @@ impl UserTcpService {
             }
         }
 
+        // Get IV.
+        if data_buf.len() < IV_LENGTH {
+            return ConnectResult::Err(format!(
+                "received data is too small, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv = data_buf[..IV_LENGTH].to_vec();
+        data_buf = data_buf[IV_LENGTH..].to_vec();
+
         // Decrypt packet.
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let binary_server_connect_packet = cipher.decrypt_vec(&data_buf);
         if let Err(e) = binary_server_connect_packet {
             return ConnectResult::IoErr(IoResult::Err(format!(
@@ -857,12 +891,14 @@ impl UserTcpService {
         let binary_client_packet = binary_client_packet.unwrap();
 
         // Encrypt packet.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut rng = rand::thread_rng();
+        let mut iv = vec![0u8; IV_LENGTH];
+        rng.fill_bytes(&mut iv);
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let mut encrypted_packet = cipher.encrypt_vec(&binary_client_packet);
 
         // Prepare encrypted packet len buffer.
-        let encrypted_packet_len = encrypted_packet.len() as u16;
+        let encrypted_packet_len = (encrypted_packet.len() + IV_LENGTH) as u16;
         let encrypted_packet_len_buf = bincode::serialize(&encrypted_packet_len);
         if let Err(e) = encrypted_packet_len_buf {
             return Err(IoResult::Err(format!(
@@ -877,6 +913,7 @@ impl UserTcpService {
         // Merge all to one buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
         out_buffer.append(&mut encrypted_packet_len_buf);
+        out_buffer.append(&mut iv);
         out_buffer.append(&mut encrypted_packet);
 
         // Send to server.

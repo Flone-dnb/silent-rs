@@ -1,8 +1,11 @@
 // External.
-use aes::Aes128;
+use aes::Aes256;
 use block_modes::block_padding::Pkcs7;
-use block_modes::{BlockMode, Ecb};
+use block_modes::{BlockMode, Cbc};
 use druid::{ExtEventSink, Selector, Target};
+use rand::RngCore;
+
+type Aes256Cbc = Cbc<Aes256, Pkcs7>;
 
 // Std.
 use std::io::ErrorKind;
@@ -64,13 +67,16 @@ impl UserUdpService {
         }
 
         // Encrypt.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut rng = rand::thread_rng();
+        let mut iv = vec![0u8; IV_LENGTH];
+        rng.fill_bytes(&mut iv);
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let mut encrypt_packet = cipher.encrypt_vec(&binary_packet);
 
-        let packet_size: u16 = encrypt_packet.len() as u16;
+        let packet_size: u16 = (encrypt_packet.len() + IV_LENGTH) as u16;
         let mut packet_size = bincode::serialize(&packet_size).unwrap();
 
+        packet_size.append(&mut iv);
         packet_size.append(&mut encrypt_packet);
 
         // Send this buffer.
@@ -142,9 +148,19 @@ impl UserUdpService {
             }
         }
 
+        // Get IV.
+        if recv_buffer.len() < IV_LENGTH {
+            return Err(format!(
+                "received data is too small, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv = &recv_buffer[..IV_LENGTH].to_vec();
+        recv_buffer = recv_buffer[IV_LENGTH..].to_vec();
+
         // Decrypt.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let decrypted_packet = cipher.decrypt_vec(&recv_buffer);
         if let Err(e) = decrypted_packet {
             return Err(format!("{:?}, at [{}, {}]", e, file!(), line!()));
@@ -216,9 +232,19 @@ impl UserUdpService {
             }
         }
 
+        // Get IV.
+        if recv_buffer.len() < IV_LENGTH {
+            return Err(format!(
+                "received data is too small, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv = &recv_buffer[..IV_LENGTH].to_vec();
+        recv_buffer = recv_buffer[IV_LENGTH..].to_vec();
+
         // Decrypt.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let decrypted_packet = cipher.decrypt_vec(&recv_buffer);
         if let Err(e) = decrypted_packet {
             return Err(format!("{:?}, at [{}, {}]", e, file!(), line!()));
@@ -275,13 +301,16 @@ impl UserUdpService {
         }
 
         // Encrypt.
-        type Aes128Ecb = Ecb<Aes128, Pkcs7>;
-        let cipher = Aes128Ecb::new_from_slices(&self.secret_key, Default::default()).unwrap();
+        let mut rng = rand::thread_rng();
+        let mut iv = vec![0u8; IV_LENGTH];
+        rng.fill_bytes(&mut iv);
+        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
         let mut encrypt_packet = cipher.encrypt_vec(&binary_packet);
 
-        let packet_size: u16 = encrypt_packet.len() as u16;
+        let packet_size: u16 = (encrypt_packet.len() + IV_LENGTH) as u16;
         let mut packet_size = bincode::serialize(&packet_size).unwrap();
 
+        packet_size.append(&mut iv);
         packet_size.append(&mut encrypt_packet);
 
         // Send this buffer.
