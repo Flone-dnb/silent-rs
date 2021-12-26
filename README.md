@@ -8,7 +8,7 @@ Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server
 
 The application is translated into the following languages: English, Russian.<br>
 The application itself does not contain a lot of text to translate so it could be easily translated into other languages.<br>
-If you want to translate the application into some other not supported language follow there steps:
+If you want to translate the application into some other not supported language follow these steps:
 <ol>
   <li>Edit the "localization.ods" file located in the "res" folder using LibreOffice Calc: add a new locale name in the first row (locale name should contain only 2 ASCII characters).</li>
   <li>Add translations to all keys.</li>
