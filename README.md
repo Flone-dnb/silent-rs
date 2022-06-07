@@ -6,8 +6,6 @@
 
 Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server-rs) application.
 
-**Project status**: maintenance mode (no new features, only critical fixes).
-
 # Localization
 
 The application is translated into the following languages: English, Russian.
