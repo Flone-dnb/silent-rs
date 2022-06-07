@@ -1,6 +1,8 @@
 # Silent
 
-![](screenshot.png?raw=true)
+<p align="center">
+  <img src="screenshot.png?raw=true" alt="Screenshot"/>
+</p>
 
 Must be used with the [Silent Server](https://github.com/Flone-dnb/silent-server-rs) application.
 
