@@ -1,13 +1,13 @@
 pub const CLIENT_CONFIG_FILE_NAME: &str = "silent.config";
 pub const CONFIG_FILE_MAGIC_NUMBER: u16 = 51338;
 pub const CONFIG_FILE_VERSION: u64 = 2;
-pub const NETWORK_PROTOCOL_VERSION: u64 = 1; // server with the same version is considered compatible
+pub const NETWORK_PROTOCOL_VERSION: u64 = 2; // server with the same version is considered compatible
 
 pub const TEXT_SIZE: f64 = 18.0;
 pub const MESSAGE_AUTHOR_TEXT_SIZE: f64 = 16.0;
 pub const MESSAGE_TEXT_SIZE: f64 = 15.0;
 
-// these should be in sync with the server global params
+// these should be in sync with the server global parameters
 pub const MAX_MESSAGE_SIZE: usize = 500;
 pub const MAX_USERNAME_SIZE: usize = 25;
 pub const MAX_PASSWORD_SIZE: usize = 20;

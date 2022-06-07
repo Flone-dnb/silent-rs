@@ -4,6 +4,7 @@ use druid::{ExtEventSink, Selector, Target};
 use system_wide_key_state::*;
 
 // Std.
+use std::convert::TryInto;
 use std::net::*;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -243,7 +244,7 @@ impl NetService {
 
         let (sender, receiver) = mpsc::channel();
 
-        // Move socket and userinfo to UserNetService.
+        // Move socket and user info to UserNetService.
         {
             let mut user_service_guard = user_tcp_service.lock().unwrap();
             user_service_guard.tcp_socket = Some(tcp_socket);
@@ -256,7 +257,22 @@ impl NetService {
 
             match user_service_guard.establish_secure_connection() {
                 Ok(key) => {
-                    user_service_guard.secret_key = key;
+                    let result = key.try_into();
+                    if result.is_err() {
+                        event_sink
+                            .submit_command(
+                                NETWORK_SERVICE_SYSTEM_IO_ERROR,
+                                format!(
+                                    "failed to convert Vec<u8> to generic array at [{}, {}]",
+                                    file!(),
+                                    line!()
+                                ),
+                                Target::Auto,
+                            )
+                            .expect("failed to submit NETWORK_SERVICE_SYSTEM_IO_ERROR command");
+                        return;
+                    }
+                    user_service_guard.secret_key = result.unwrap();
                 }
                 Err(e) => match e {
                     HandleMessageResult::Ok => {}
@@ -495,7 +511,7 @@ impl NetService {
         user_udp_service: Arc<Mutex<UserUdpService>>,
         audio_service: Arc<Mutex<AudioService>>,
         push_to_talk_key: KeyCode,
-        secret_key: Vec<u8>,
+        secret_key: [u8; SECRET_KEY_SIZE],
     ) {
         let udp_socket = UdpSocket::bind("0.0.0.0:0");
         if let Err(e) = udp_socket {

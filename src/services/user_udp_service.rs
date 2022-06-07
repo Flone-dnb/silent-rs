@@ -1,13 +1,13 @@
 // External.
-use aes::Aes256;
-use block_modes::block_padding::Pkcs7;
-use block_modes::{BlockMode, Cbc};
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use druid::{ExtEventSink, Selector, Target};
 use rand::RngCore;
 
-type Aes256Cbc = Cbc<Aes256, Pkcs7>;
+type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
+type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
 // Std.
+use std::convert::TryInto;
 use std::io::ErrorKind;
 use std::net::*;
 use std::sync::{Arc, Mutex};
@@ -16,6 +16,7 @@ use std::time::Duration;
 
 // Custom.
 use super::udp_packets::*;
+use super::user_tcp_service::SECRET_KEY_SIZE;
 use crate::global_params::*;
 use crate::services::audio_service::audio_service::*;
 
@@ -34,7 +35,7 @@ pub struct UserUdpService {
     io_udp_mutex: Mutex<()>,
     udp_socket_copy: Option<UdpSocket>,
     username: String,
-    pub secret_key: Vec<u8>,
+    pub secret_key: [u8; SECRET_KEY_SIZE],
 }
 
 impl UserUdpService {
@@ -43,7 +44,7 @@ impl UserUdpService {
             io_udp_mutex: Mutex::new(()),
             udp_socket_copy: None,
             username: String::from(""),
-            secret_key: Vec::new(),
+            secret_key: [0; SECRET_KEY_SIZE],
         }
     }
     pub fn assign_socket_and_name(&mut self, socket: UdpSocket, username: String) {
@@ -68,16 +69,16 @@ impl UserUdpService {
 
         // Encrypt.
         let mut rng = rand::thread_rng();
-        let mut iv = vec![0u8; IV_LENGTH];
+        let mut iv = [0u8; IV_LENGTH];
         rng.fill_bytes(&mut iv);
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let mut encrypt_packet = cipher.encrypt_vec(&binary_packet);
+        let mut encrypted_packet = Aes256CbcEnc::new(&self.secret_key.into(), &iv.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(&binary_packet);
 
-        let packet_size: u16 = (encrypt_packet.len() + IV_LENGTH) as u16;
+        let packet_size: u16 = (encrypted_packet.len() + IV_LENGTH) as u16;
         let mut packet_size = bincode::serialize(&packet_size).unwrap();
 
-        packet_size.append(&mut iv);
-        packet_size.append(&mut encrypt_packet);
+        packet_size.append(&mut Vec::from(iv));
+        packet_size.append(&mut encrypted_packet);
 
         // Send this buffer.
         if let Err(msg) = self.send(&self.udp_socket_copy.as_ref().unwrap(), &packet_size) {
@@ -156,12 +157,23 @@ impl UserUdpService {
                 line!()
             ));
         }
-        let iv = &recv_buffer[..IV_LENGTH].to_vec();
+        let iv = recv_buffer[..IV_LENGTH].to_vec();
         recv_buffer = recv_buffer[IV_LENGTH..].to_vec();
 
-        // Decrypt.
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let decrypted_packet = cipher.decrypt_vec(&recv_buffer);
+        // Convert IV.
+        let iv = iv.try_into();
+        if iv.is_err() {
+            return Err(format!(
+                "failed to convert iv to generic array, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv: [u8; IV_LENGTH] = iv.unwrap();
+
+        // Decrypt packet.
+        let decrypted_packet = Aes256CbcDec::new(&self.secret_key.into(), &iv.into())
+            .decrypt_padded_vec_mut::<Pkcs7>(&recv_buffer);
         if let Err(e) = decrypted_packet {
             return Err(format!("{:?}, at [{}, {}]", e, file!(), line!()));
         }
@@ -240,12 +252,23 @@ impl UserUdpService {
                 line!()
             ));
         }
-        let iv = &recv_buffer[..IV_LENGTH].to_vec();
+        let iv = recv_buffer[..IV_LENGTH].to_vec();
         recv_buffer = recv_buffer[IV_LENGTH..].to_vec();
 
-        // Decrypt.
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let decrypted_packet = cipher.decrypt_vec(&recv_buffer);
+        // Convert IV.
+        let iv = iv.try_into();
+        if iv.is_err() {
+            return Err(format!(
+                "failed to convert iv to generic array, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv: [u8; IV_LENGTH] = iv.unwrap();
+
+        // Decrypt packet.
+        let decrypted_packet = Aes256CbcDec::new(&self.secret_key.into(), &iv.into())
+            .decrypt_padded_vec_mut::<Pkcs7>(&recv_buffer);
         if let Err(e) = decrypted_packet {
             return Err(format!("{:?}, at [{}, {}]", e, file!(), line!()));
         }
@@ -302,16 +325,16 @@ impl UserUdpService {
 
         // Encrypt.
         let mut rng = rand::thread_rng();
-        let mut iv = vec![0u8; IV_LENGTH];
+        let mut iv = [0u8; IV_LENGTH];
         rng.fill_bytes(&mut iv);
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let mut encrypt_packet = cipher.encrypt_vec(&binary_packet);
+        let mut encrypted_packet = Aes256CbcEnc::new(&self.secret_key.into(), &iv.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(&binary_packet);
 
-        let packet_size: u16 = (encrypt_packet.len() + IV_LENGTH) as u16;
+        let packet_size: u16 = (encrypted_packet.len() + IV_LENGTH) as u16;
         let mut packet_size = bincode::serialize(&packet_size).unwrap();
 
-        packet_size.append(&mut iv);
-        packet_size.append(&mut encrypt_packet);
+        packet_size.append(&mut Vec::from(iv));
+        packet_size.append(&mut encrypted_packet);
 
         // Send this buffer.
         if let Err(msg) = self.send(udp_socket, &packet_size) {

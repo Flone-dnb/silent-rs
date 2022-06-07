@@ -1,15 +1,18 @@
 // External.
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use aes::Aes256;
-use block_modes::block_padding::Pkcs7;
-use block_modes::{BlockMode, Cbc};
-use cmac::{Cmac, Mac, NewMac};
+use cmac::{Cmac, Mac};
 use druid::{ExtEventSink, Selector, Target};
 use num_bigint::{BigUint, RandomBits};
 use rand::{Rng, RngCore};
 
-type Aes256Cbc = Cbc<Aes256, Pkcs7>;
+type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
+type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
+
+pub const SECRET_KEY_SIZE: usize = 32;
 
 // Std.
+use std::convert::TryInto;
 use std::io::prelude::*;
 use std::net::*;
 use std::sync::Mutex;
@@ -103,7 +106,7 @@ pub struct UserTcpService {
     pub server_password: String,
     pub tcp_socket: Option<TcpStream>,
     pub io_tcp_mutex: Mutex<()>,
-    pub secret_key: Vec<u8>,
+    pub secret_key: [u8; SECRET_KEY_SIZE],
 }
 
 impl UserTcpService {
@@ -116,7 +119,7 @@ impl UserTcpService {
                 username: String::from(""),
             },
             io_tcp_mutex: Mutex::new(()),
-            secret_key: Vec::new(),
+            secret_key: [0; SECRET_KEY_SIZE],
         }
     }
     pub fn establish_secure_connection(&mut self) -> Result<Vec<u8>, HandleMessageResult> {
@@ -447,10 +450,10 @@ impl UserTcpService {
 
         // Encrypt packet.
         let mut rng = rand::thread_rng();
-        let mut iv = vec![0u8; IV_LENGTH];
+        let mut iv = [0u8; IV_LENGTH];
         rng.fill_bytes(&mut iv);
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let mut encrypted_packet = cipher.encrypt_vec(&binary_client_packet);
+        let mut encrypted_packet = Aes256CbcEnc::new(&self.secret_key.into(), &iv.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(&binary_client_packet);
 
         // Prepare encrypted packet len buffer.
         let encrypted_len = (encrypted_packet.len() + IV_LENGTH) as u16;
@@ -466,7 +469,7 @@ impl UserTcpService {
         let mut send_buffer = encrypted_len_buf.unwrap();
 
         // Merge all to one buffer.
-        send_buffer.append(&mut iv);
+        send_buffer.append(&mut Vec::from(iv));
         send_buffer.append(&mut encrypted_packet);
 
         // Send to server.
@@ -525,10 +528,11 @@ impl UserTcpService {
 
         // Encrypt packet.
         let mut rng = rand::thread_rng();
-        let mut iv = vec![0u8; IV_LENGTH];
+        let mut iv = [0u8; IV_LENGTH];
         rng.fill_bytes(&mut iv);
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let mut encrypted_message_packet = cipher.encrypt_vec(&binary_client_message_packet);
+        let mut encrypted_message_packet =
+            Aes256CbcEnc::new(&self.secret_key.into(), &iv.into())
+                .encrypt_padded_vec_mut::<Pkcs7>(&binary_client_message_packet);
 
         // Prepare encrypted packet len buffer.
         let encrypted_message_len = (encrypted_message_packet.len() + IV_LENGTH) as u16;
@@ -546,7 +550,7 @@ impl UserTcpService {
         // Merge all to one buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
         out_buffer.append(&mut encrypted_message_len_buf);
-        out_buffer.append(&mut iv);
+        out_buffer.append(&mut Vec::from(iv));
         out_buffer.append(&mut encrypted_message_packet);
 
         // Send to server.
@@ -673,15 +677,26 @@ impl UserTcpService {
                 line!()
             )));
         }
-        let iv = &packet_buf[..IV_LENGTH].to_vec();
+        let iv = packet_buf[..IV_LENGTH].to_vec();
         packet_buf = packet_buf[IV_LENGTH..].to_vec();
 
+        // Convert IV.
+        let iv = iv.try_into();
+        if iv.is_err() {
+            return HandleMessageResult::OtherErr(format!(
+                "failed to convert iv to generic array, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv: [u8; IV_LENGTH] = iv.unwrap();
+
         // Decrypt packet.
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let binary_server_packet = cipher.decrypt_vec(&packet_buf);
+        let binary_server_packet = Aes256CbcDec::new(&self.secret_key.into(), &iv.into())
+            .decrypt_padded_vec_mut::<Pkcs7>(&packet_buf);
         if let Err(e) = binary_server_packet {
             return HandleMessageResult::IOError(IoResult::Err(format!(
-                "Unable to decrypt a packet (error: {}), at [{}, {}].",
+                "unable to decrypt a packet (error: {}), at [{}, {}].",
                 e,
                 file!(),
                 line!()
@@ -695,7 +710,19 @@ impl UserTcpService {
             .drain(binary_server_packet.len().saturating_sub(CMAC_TAG_LENGTH)..)
             .collect();
         mac.update(&binary_server_packet);
-        if let Err(e) = mac.verify(&tag) {
+
+        // Convert tag.
+        let tag = tag.try_into();
+        if tag.is_err() {
+            return HandleMessageResult::OtherErr(format!(
+                "failed to convert cmac tag to generic array, at [{}, {}]",
+                file!(),
+                line!()
+            ));
+        }
+        let tag: [u8; CMAC_TAG_LENGTH] = tag.unwrap();
+
+        if let Err(e) = mac.verify(&tag.into()) {
             return HandleMessageResult::OtherErr(format!(
                 "Incorrect tag (error: {}), at [{}, {}].",
                 e,
@@ -794,10 +821,10 @@ impl UserTcpService {
 
         // Encrypt binary packet.
         let mut rng = rand::thread_rng();
-        let mut iv = vec![0u8; IV_LENGTH];
+        let mut iv = [0u8; IV_LENGTH];
         rng.fill_bytes(&mut iv);
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let mut encrypted_binary_packet = cipher.encrypt_vec(&binary_packet);
+        let mut encrypted_binary_packet = Aes256CbcEnc::new(&self.secret_key.into(), &iv.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(&binary_packet);
 
         if encrypted_binary_packet.len() + IV_LENGTH + std::mem::size_of::<u16>()
             > std::u16::MAX as usize
@@ -815,7 +842,7 @@ impl UserTcpService {
 
         let mut send_buffer: Vec<u8> = Vec::new();
         send_buffer.append(&mut packet_size);
-        send_buffer.append(&mut iv);
+        send_buffer.append(&mut Vec::from(iv));
         send_buffer.append(&mut encrypted_binary_packet);
 
         // Send this buffer.
@@ -873,9 +900,20 @@ impl UserTcpService {
         let iv = data_buf[..IV_LENGTH].to_vec();
         data_buf = data_buf[IV_LENGTH..].to_vec();
 
+        // Convert IV.
+        let iv = iv.try_into();
+        if iv.is_err() {
+            return ConnectResult::Err(format!(
+                "failed to convert iv to generic array, at [{}, {}].",
+                file!(),
+                line!()
+            ));
+        }
+        let iv: [u8; IV_LENGTH] = iv.unwrap();
+
         // Decrypt packet.
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let binary_server_connect_packet = cipher.decrypt_vec(&data_buf);
+        let binary_server_connect_packet = Aes256CbcDec::new(&self.secret_key.into(), &iv.into())
+            .decrypt_padded_vec_mut::<Pkcs7>(&data_buf);
         if let Err(e) = binary_server_connect_packet {
             return ConnectResult::IoErr(IoResult::Err(format!(
                 "Unable to decrypt a packet (error: {}), at [{}, {}].",
@@ -896,7 +934,19 @@ impl UserTcpService {
             )
             .collect();
         mac.update(&binary_server_connect_packet);
-        if let Err(e) = mac.verify(&tag) {
+
+        // Convert tag.
+        let tag = tag.try_into();
+        if tag.is_err() {
+            return ConnectResult::Err(format!(
+                "failed to convert cmac tag to generic array, at [{}, {}]",
+                file!(),
+                line!()
+            ));
+        }
+        let tag: [u8; CMAC_TAG_LENGTH] = tag.unwrap();
+
+        if let Err(e) = mac.verify(&tag.into()) {
             return ConnectResult::Err(format!(
                 "Incorrect tag (error: {}), at [{}, {}].",
                 e,
@@ -995,10 +1045,10 @@ impl UserTcpService {
 
         // Encrypt packet.
         let mut rng = rand::thread_rng();
-        let mut iv = vec![0u8; IV_LENGTH];
+        let mut iv = [0u8; IV_LENGTH];
         rng.fill_bytes(&mut iv);
-        let cipher = Aes256Cbc::new_from_slices(&self.secret_key, &iv).unwrap();
-        let mut encrypted_packet = cipher.encrypt_vec(&binary_client_packet);
+        let mut encrypted_packet = Aes256CbcEnc::new(&self.secret_key.into(), &iv.into())
+            .encrypt_padded_vec_mut::<Pkcs7>(&binary_client_packet);
 
         // Prepare encrypted packet len buffer.
         let encrypted_packet_len = (encrypted_packet.len() + IV_LENGTH) as u16;
@@ -1016,7 +1066,7 @@ impl UserTcpService {
         // Merge all to one buffer.
         let mut out_buffer: Vec<u8> = Vec::new();
         out_buffer.append(&mut encrypted_packet_len_buf);
-        out_buffer.append(&mut iv);
+        out_buffer.append(&mut Vec::from(iv));
         out_buffer.append(&mut encrypted_packet);
 
         // Send to server.
